@@ -13,6 +13,7 @@ var FAV_GID = 170899864;
 var STUDENT_GID = 835082359;
 var HEADER = ['timestamp','hak','name','classNum','no','recordNo','univ','region','type','typeName','major','criterion','minReq','order'];
 var NHEADER = ['id','timestamp','hak','name','classNum','text','teacher'];
+var OHEADER = ['timestamp','hak','recordNo','month','value','teacher']; // 판정 조정(확인→충족/미충족)
 
 function doGet(e){
   var p = (e && e.parameter) || {};
@@ -36,6 +37,8 @@ function handle(p){
   if (a === 'notes_add')     return addNote(p);
   if (a === 'notes_remove')  return removeNote(p);
   if (a === 'students')      return { ok:true, rows: listStudentsRows() };
+  if (a === 'override_list') return { ok:true, items: listOverrides() };
+  if (a === 'override_set')  return setOverride(p);
   return { ok:false, error:'unknown action: ' + a };
 }
 
@@ -145,6 +148,47 @@ function removeNote(p){
       for (var i=0;i<ids.length;i++) if (String(ids[i][0])===id){ sh.deleteRow(i+2); return { ok:true, removed:true }; }
     }
     return { ok:true, removed:false };
+  } finally { lock.releaseLock(); }
+}
+
+/* ===== 판정 조정(확인 → 충족/미충족, 모든 담임 공유) ===== */
+function getOverrideSheet(){
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName('판정조정') || ss.insertSheet('판정조정');
+  if (sh.getLastRow() === 0){ sh.getRange(1,1,1,OHEADER.length).setValues([OHEADER]); sh.setFrozenRows(1); }
+  return sh;
+}
+function listOverrides(){
+  var sh = getOverrideSheet(), last = sh.getLastRow();
+  if (last < 2) return [];
+  var v = sh.getRange(2,1,last-1,OHEADER.length).getValues(), out = [];
+  for (var i=0;i<v.length;i++){
+    if (!v[i][1]) continue;
+    out.push({ hak:String(v[i][1]), recordNo:String(v[i][2]), month:String(v[i][3]), value:String(v[i][4]) });
+  }
+  return out;
+}
+function findOverrideRow(sh, hak, recordNo, month){
+  var last = sh.getLastRow(); if (last < 2) return -1;
+  var v = sh.getRange(2,1,last-1,OHEADER.length).getValues();
+  for (var i=0;i<v.length;i++)
+    if (String(v[i][1])===hak && String(v[i][2])===recordNo && String(v[i][3])===month) return i+2;
+  return -1;
+}
+function setOverride(p){
+  var lock = LockService.getScriptLock(); lock.waitLock(8000);
+  try {
+    var sh = getOverrideSheet();
+    var hak = String(p.hak||''), recordNo = String(p.recordNo||''), month = String(p.month||''), value = String(p.value||'');
+    if (!hak || !recordNo || !month) return { ok:false, error:'hak/recordNo/month required' };
+    var r = findOverrideRow(sh, hak, recordNo, month);
+    if (!value){ // 확인으로 되돌리기 → 행 삭제
+      if (r > 0) sh.deleteRow(r);
+      return { ok:true, removed:r>0 };
+    }
+    if (r > 0){ sh.getRange(r,1,1,OHEADER.length).setValues([[new Date(),hak,recordNo,month,value,p.teacher||'']]); }
+    else { sh.appendRow([new Date(),hak,recordNo,month,value,p.teacher||'']); }
+    return { ok:true };
   } finally { lock.releaseLock(); }
 }
 
