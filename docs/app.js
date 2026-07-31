@@ -10,7 +10,7 @@ const DATA_VER = 'v1';
 const U=0, T=1, J=2, M=3, G=4, MJ=5, GJR=6, CW=7, C50=8, C70=9, GN=10, G30=11, G50=12, G70=13, SC=14, INV=15,
       NC=16, NW=17;   // NC: 이 학과 통합 지원사례(두 자료 합산), NW: 그중 확인된 합격
 
-let META=null, P=null, S=null, DS=null, CM=null;  // meta, programs, scales, 합불통계, 전형별 내역
+let META=null, P=null, S=null, DS=null;  // meta, programs, scales, 전형별 합불통계
 let crossCache = {};                     // uidx -> shard
 let state = { tab:'search', q:'', types:new Set(), gyeol:'', region:'', sort:'pop', limit:60,
               band:3.0, bandW:0.25, bandLimit:40, detail:null, minN:3 };
@@ -71,14 +71,13 @@ async function boot(){
   VIEW.innerHTML = '<div class="empty">데이터 불러오는 중… (첫 접속만 몇 초 걸려요)</div>';
   try{
     const nil = () => null;
-    const [m, p, s, d, c] = await Promise.all([
+    const [m, p, s, d] = await Promise.all([
       fetch('data/meta.json').then(r=>r.json()),
       fetch('data/programs.json').then(r=>r.json()),
       fetch('data/scales.json').then(r=>r.json()),
       fetch('data/deptstats.json').then(r=>r.json()).catch(nil),
-      fetch('data/casemix.json').then(r=>r.json()).catch(nil),
     ]);
-    META=m; P=p; S=s; DS=d; CM=c;
+    META=m; P=p; S=s; DS=d;
     // 검색 인덱스
     P.forEach((r,i) => r._s = (META.univs[r[U]] + ' ' + r[M] + ' ' + r[J]).toLowerCase());
     setCart(cart());
@@ -284,18 +283,12 @@ async function renderDetail(){
     ${(r[CW]&&r[MJ]&&r[CW]>=r[MJ])?`<div class="notice blue">🔄 작년 추가합격(${r[CW]}번)이 모집인원(${r[MJ]}명)의 ${(r[CW]/r[MJ]).toFixed(1)}배!
       최초 합격선보다 실제 문이 훨씬 넓었어요.</div>`:''}
     ${r[NC]?(()=>{
-      const mix = CM && CM[`${r[U]}|${r[T]}|${r[M]}`];
       const exp = (r[MJ]&&r[GJR]) ? Math.round(r[MJ]*r[GJR]) : null;
+      const pct = exp ? Math.round(r[NC]/exp*100) : null;
       return `
-    <h3 class="sec-sa">👥 선배들의 지원 기록 ${r[NC].toLocaleString()}건 <span class="src sa">선배 사례</span></h3>
-    <div class="mut small">📏 <b>${esc(r[M])}</b>에 <b>${esc(r[T])}</b>전형으로 지원한 기록 전부예요.
-      위 "${esc(r[J])}"${exp?` 한 전형(약 ${exp.toLocaleString()}명 지원)`:''}뿐 아니라
-      <u>지역인재·농어촌처럼 대학 발표 자료에 없는 전형까지 포함</u>돼 있어서 더 클 수 있어요.
-      ${mix?'내역은 아래에서 확인하세요.':''}</div>
-    ${mix?`<details style="margin-top:8px"><summary>어떤 전형들이 섞여 있나 (${mix.length}종)</summary>
-      <div class="scroll" style="margin-top:6px"><table>
-        ${mix.map(([n,v])=>`<tr><td>${esc(n)}</td><td class="num">${v.toLocaleString()}건</td></tr>`).join('')}
-      </table></div></details>`:''}`;
+    <h3 class="sec-sa">👥 이 전형 지원 기록 ${r[NC].toLocaleString()}건 <span class="src sa">선배 사례</span></h3>
+    <div class="mut small">📏 <b>${esc(r[J])}</b> 전형으로 <b>${esc(r[M])}</b>에 지원한 기록이에요.
+      ${exp?`이 전형 전체 지원자 약 ${exp.toLocaleString()}명 중 <b>${pct}%</b>를 확보한 표본이에요.`:''}</div>`;
     })():''}
     ${r[GN]?`
     <div class="mut small" style="margin-top:8px">📏 범위: 이 학과를 <b>${esc(r[J])}</b> 전형으로 쓴 ${r[GN]}명 · 대학별 환산등급</div>
@@ -320,11 +313,11 @@ async function renderDetail(){
     <button class="btn ghost no-print" id="goBand">📊 전교과 ${cutfmt(sc.jeon[1])} 근처 성적대는 어디를 많이 쓸까?</button>
     `:''}
     ${(()=>{
-      const d = DS && DS[`${r[U]}|${r[T]}|${r[M]}`];
+      const d = DS && DS[String(i)];
       if(!d) return '';
       return `
       <h3 class="sec-sa">👥 붙은 선배 vs 쓴 선배 <span class="src sa">선배 사례</span></h3>
-      <div class="mut small">📏 위 ${r[NC]||'?'}건 중 <b>전교과 등급까지 확인된 ${d.n}건</b>이에요.</div>
+      <div class="mut small">📏 이 전형 기록 중 <b>전교과 등급까지 확인된 ${d.n}건</b>이에요.</div>
       <div class="scroll"><table>
         <tr><th>구분</th><th class="num">상위30%</th><th class="num">50%</th><th class="num">70%</th></tr>
         <tr><td>지원자 전체 <span class="mut small">(${d.n}명)</span></td>${d.a.map(v=>`<td class="num">${cutfmt(v)}</td>`).join('')}</tr>
@@ -353,9 +346,9 @@ async function renderDetail(){
   if(!box) return;
   let rows = [], mode = 'dept';
   const s3 = await loadShard('cross3', r[U]);
-  if(s3 && s3[`${r[T]}|${r[M]}`]){
-    // [권역, 대학, 대전형, 모집단위, 계열, 지원, 합격]
-    rows = s3[`${r[T]}|${r[M]}`].map(x=>[x[0],x[1],x[2],'',x[4],x[3],null,x[5],x[6]]);
+  if(s3 && s3[`${r[T]}|${r[J]}|${r[M]}`]){
+    // [권역, 대학, 대전형, 전형명, 모집단위, 계열, 지원, 합격]
+    rows = s3[`${r[T]}|${r[J]}|${r[M]}`].map(x=>[x[0],x[1],x[2],x[3],x[5],x[4],null,x[6],x[7]]);
   }
   if(!rows.length){
     const s1 = await loadShard('cross', r[U]);
@@ -387,7 +380,7 @@ async function renderDetail(){
       <div class="chips no-print">
         ${[1,3,5,10].map(n=>`<button class="chip ${minN===n?'on':''}" data-minn="${n}">${n}명 이상</button>`).join('')}
       </div>
-      <div class="mut small" style="margin-bottom:6px">${r[NC]?`이 학과 지원 기록 <b>${r[NC].toLocaleString()}건</b>의 주인공들이 `:''}다른 곳에 낸 원서 <b>${total.toLocaleString()}장</b>을 모은 표예요.
+      <div class="mut small" style="margin-bottom:6px">${r[NC]?`이 전형 지원자들이 `:''}다른 곳에 낸 원서 <b>${total.toLocaleString()}장</b>을 모은 표예요.
         아래 <b>지원</b>은 "그곳에도 함께 낸 사람 수"입니다.</div>
       <div class="scroll"><table>
         <tr><th>어디를</th><th>어떻게</th><th class="num">지원</th><th class="num">합격률</th></tr>
