@@ -14,6 +14,8 @@ let crossCache = {};                     // uidx -> shard
 let state = { tab:'search', q:'', types:new Set(), gyeol:'', region:'', sort:'pop', limit:60,
               band:3.0, bandW:0.25, bandLimit:40, detail:null, minN:3 };
 
+const FREE_RE = /자유전공|자율전공|자유학부|열린전공|융합자율|무전공|자율학부|계열자유|전공자유/;
+
 /* ---------- 유틸 ---------- */
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const fmt = (v, suf='') => (v === null || v === undefined) ? '–' : v + suf;
@@ -40,7 +42,7 @@ function setCart(ids){
 function toggleCart(i){
   const c = cart(); const k = c.indexOf(i);
   if(k >= 0){ c.splice(k,1); toast('목록에서 뺐어요'); }
-  else { if(c.length >= 20){ toast('최대 20개까지 담을 수 있어요'); return; } c.push(i); toast('내 목록에 담았어요 🗂️'); }
+  else { if(c.length >= 20){ toast('최대 20개까지 담을 수 있어요'); return; } c.push(i); toast('내 목록에 담았어요 🛒'); }
   setCart(c);
   // 탐색 탭에선 결과 목록만 갱신 (검색창 포커스 유지)
   if(state.tab==='search' && $('#results')) updateResults(); else render();
@@ -100,6 +102,7 @@ function filtered(){
     const r = P[i];
     if(toks.length && !toks.every(t => r._s.includes(t))) continue;
     if(state.types.size && !state.types.has(r[T])) continue;
+    if(state.free && !FREE_RE.test(r[M])) continue;
     if(state.gyeol && r[G] !== state.gyeol && r[G] !== '공통') continue;  // 자유전공(공통)은 인문·자연 어디서든 보이게
     if(state.region && META.regions[r[U]] !== state.region) continue;
     out.push(i);
@@ -124,7 +127,7 @@ function pItem(i){
       <div class="t2">${esc(r[M])} · ${esc(r[J])}${r[GN]?` · 작년 지원사례 ${r[GN]}명`:''}</div>
     </div>
     <div class="cut">${r[C50]!==null?`<b>${cutfmt(r[C50])}</b><div class="small">발표 50%컷</div>`:`<div class="small" style="max-width:56px">작년 기록<br>없음</div>`}</div>
-    <button class="cartbtn ${inCart?'in':''}" data-cart="${i}" aria-label="담기">${inCart?'✅':'➕'}</button>
+    <button class="cartbtn ${inCart?'in':''}" data-cart="${i}" aria-label="${inCart?'목록에서 빼기':'내 목록에 담기'}">${inCart?'✅':'🛒'}</button>
   </div>`;
 }
 
@@ -148,6 +151,7 @@ function renderSearch(){
       ${['교과','종합','논술','실기'].map(t=>`<button class="chip ${state.types.has(t)?'on':''}" data-type="${t}">${t}</button>`).join('')}
       <span style="width:6px"></span>
       ${['인문','자연','예체능'].map(g=>`<button class="chip ${state.gyeol===g?'on':''}" data-gyeol="${g}">${g}</button>`).join('')}
+      <button class="chip ${state.free?'on':''}" id="freeChip">🎓 자유전공만</button>
     </div>
     <div class="row">
       <select id="region"><option value="">모든 지역</option>
@@ -170,6 +174,8 @@ function renderSearch(){
     clearTimeout(tm);
     tm = setTimeout(()=>{ state.q = e.target.value; state.limit=60; updateResults(); }, 150);
   });
+  $('#freeChip').addEventListener('click', e => {
+    state.free = !state.free; e.target.classList.toggle('on', state.free); state.limit=60; updateResults(); });
   $('#region').addEventListener('change', e => { state.region = e.target.value; state.limit=60; updateResults(); });
   $('#sort').addEventListener('change', e => { state.sort = e.target.value; updateResults(); });
   document.querySelectorAll('[data-type]').forEach(b=>b.addEventListener('click',()=>{
@@ -212,20 +218,28 @@ function univCandidates(name){
   }
   const exact = META.univs.indexOf(name);
   if(exact >= 0) return [exact];
-  const out = [];
+  const withc = [], base = [];
   for(let i=0;i<_uShort.length;i++){
-    const [withCampus, base] = _uShort[i];
-    if(name === withCampus || name === base) out.push(i);
+    if(name === _uShort[i][0]) withc.push(i);        // 캠퍼스까지 일치 (강함)
+    else if(name === _uShort[i][1]) base.push(i);    // 기본명만 일치 (모호)
   }
-  return out;
+  return withc.length ? withc : base;
 }
-function findProgram(univName, t, j, m){
+// 40개 대학이 축약명을 공유(가천대→성남/메디컬 등)하므로 권역으로 캠퍼스를 가려낸다
+function findProgram(univName, t, j, m, region){
   const cands = univCandidates(univName);
+  if(!cands.length) return -1;
+  const pool = cands.length > 1 && region
+    ? (cands.filter(u => META.regions[u] === region).length ? cands.filter(u => META.regions[u] === region) : cands)
+    : cands;
+  let loose = -1;
   for(let i=0;i<P.length;i++){
     const r=P[i];
-    if(cands.includes(r[U]) && r[T]===t && r[J]===j && r[M]===m) return i;
+    if(!pool.includes(r[U]) || r[M]!==m) continue;
+    if(r[T]===t && r[J]===j) return i;               // 전형까지 정확히 일치
+    if(loose < 0) loose = i;                          // 학과만 맞는 후보 보관
   }
-  return -1;
+  return loose;
 }
 
 async function renderDetail(){
@@ -243,7 +257,7 @@ async function renderDetail(){
         <h2>${esc(univ)} <span class="tag ${esc(r[T])}">${esc(r[T])}</span></h2>
         <div class="mut">${esc(r[M])} · ${esc(r[J])}전형${r[G]?` · ${esc(r[G])}`:''} · ${esc(META.regions[r[U]]||'')}</div>
       </div>
-      <button class="cartbtn no-print ${inCart?'in':''}" data-cart="${i}" style="flex:none">${inCart?'✅':'➕'}</button>
+      <button class="cartbtn no-print ${inCart?'in':''}" data-cart="${i}" style="flex:none;width:auto;padding:0 12px;font-size:14px;font-weight:700">${inCart?'✅ 담김':'🛒 담기'}</button>
     </div>
     <h3 class="sec-of">🏫 대학이 발표한 작년(2026) 입시결과 <span class="src of">대학 발표</span></h3>
     <div class="mut small">대학이 공개한 공식 기록이에요 — 최종 등록자 기준 컷.</div>
@@ -334,7 +348,7 @@ async function renderDetail(){
       <div class="scroll"><table>
         <tr><th>어디를</th><th>어떤 전형으로</th><th class="num">지원</th><th class="num">합격률</th></tr>
         ${rs.slice(0,40).map(x=>{
-          const pi = x[5] ? findProgram(x[1], x[2], x[3], x[5]) : -1;
+          const pi = x[5] ? findProgram(x[1], x[2], x[3], x[5], x[0]) : -1;
           return `<tr ${pi>=0?`data-p="${pi}" style="cursor:pointer"`:''}>
             <td><b>${esc(x[1])}</b>${x[5]?`<br><span class="mut small">${esc(x[5])}</span>`:''}</td>
             <td>${esc(x[3])}<br><span class="mut small">${esc(x[2])}${x[4]?' · '+esc(x[4]):''}</span></td>
@@ -453,7 +467,7 @@ function renderCart(){
   const ids = cart();
   VIEW.innerHTML = `
   <div class="card">
-    <h2>🗂️ 내 목록 <span class="mut small">${ids.length}/20</span></h2>
+    <h2>🛒 내 목록 <span class="mut small">${ids.length}/20</span></h2>
     <div class="mut small">상담 전에 이 목록을 만들어 오면 이야기가 빨라져요.</div>
   </div>
   ${ids.length ? `
@@ -479,7 +493,7 @@ function renderCart(){
       <button class="btn line" id="shPrint">🖨️ 인쇄</button>
     </div>
     <div class="mut small" style="margin-top:8px">링크를 받은 사람(친구·선생님)은 이 목록을 그대로 볼 수 있어요.</div>
-  </div>` : '<div class="empty">아직 담은 전형이 없어요.<br>탐색에서 ➕ 를 눌러 담아보세요!</div>'}`;
+  </div>` : '<div class="empty">아직 담은 전형이 없어요.<br>탐색에서 🛒 를 눌러 담아보세요!</div>'}`;
 
   bindCommon();
   document.querySelectorAll('[data-up]').forEach(b=>b.addEventListener('click', e=>{
@@ -523,8 +537,8 @@ function renderHelp(){
     <p class="small">대학·학과 이름으로 검색하고, 학과를 누르면 <b>작년에 그 전형을 쓴 선배들이 같이 쓴 곳과 결과</b>가 나와요. 여기가 이 사이트의 핵심!</p>
     <h3>📊 성적대</h3>
     <p class="small">전교과 등급대를 슬라이더로 고르면, 그 성적대 선배들이 실제로 많이 낸 전형이 나와요.</p>
-    <h3>🗂️ 내 목록</h3>
-    <p class="small">➕로 담고, 순서를 정리하고, 링크로 공유하거나 인쇄해서 상담 때 가져오세요.</p>
+    <h3>🛒 내 목록</h3>
+    <p class="small">🛒로 담고, 순서를 정리하고, 링크로 공유하거나 인쇄해서 상담 때 가져오세요.</p>
   </div>
   <div class="card">
     <h2>🏷️ 두 가지 숫자, 출처가 달라요</h2>
