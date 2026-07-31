@@ -12,7 +12,7 @@ const U=0, T=1, J=2, M=3, G=4, MJ=5, GJR=6, CW=7, C50=8, C70=9, GN=10, G30=11, G
 
 let META=null, P=null, S=null, DS=null;  // meta, programs, scales, 전형별 합불통계
 let crossCache = {};                     // uidx -> shard
-let state = { tab:'search', q:'', types:new Set(), gyeol:'', region:'', sort:'pop', limit:60,
+let state = { tab:'search', q:'', types:new Set(), gyeol:'', region:'', sort:'data', limit:60,
               band:3.0, bandW:0.25, bandLimit:40, detail:null, minN:3 };
 
 const FREE_RE = /자유전공|자율전공|자유학부|열린전공|융합자율|무전공|자율학부|계열자유|전공자유/;
@@ -68,7 +68,7 @@ function route(){
 
 /* ---------- 부팅 ---------- */
 async function boot(){
-  VIEW.innerHTML = '<div class="empty">데이터 불러오는 중… (첫 접속만 몇 초 걸려요)</div>';
+  VIEW.innerHTML = '<div class="empty">🧭<br>대입 자료 불러오는 중…<br><span class="small">첫 접속만 몇 초 걸려요</span></div>';
   try{
     const nil = () => null;
     const [m, p, s, d] = await Promise.all([
@@ -114,6 +114,9 @@ function filtered(){
   out.sort((a,b) => {
     const A=P[a], B=P[b];
     const app = x => (x[MJ]&&x[GJR]) ? x[MJ]*x[GJR] : -1;   // 대학 발표 기준 실제 지원자
+    // 자료 많은 순: 컷·경쟁률·기록이 갖춰진 전형을 먼저 (빈 카드가 위로 오지 않게)
+    const rich = x => (x[C50]!==null?4:0)+(x[GJR]?2:0)+(x[NC]>=5?1:0);
+    if(key==='data') return (rich(B)-rich(A)) || (app(B)-app(A));
     if(key==='pop')  return app(B)-app(A);
     if(key==='comp') return (A[GJR]??999)-(B[GJR]??999);
     if(key==='cutA') return (A[C50]??99)-(B[C50]??99);
@@ -125,13 +128,18 @@ function filtered(){
 
 function pItem(i){
   const r = P[i], inCart = cart().includes(i);
+  const facts = [];
+  if(r[MJ]) facts.push(`${r[MJ]}명 모집`);
+  if(r[GJR]) facts.push(`${r[GJR]}:1`);
+  if(r[CW]) facts.push(`추합 ${r[CW]}`);
   return `<div class="pitem" data-p="${i}">
     <div class="body">
-      <div class="t1">${esc(META.univs[r[U]])} <span class="tag ${esc(r[T])}">${esc(r[T])}</span>
-        ${r[G]?`<span class="tag 계열">${esc(r[G])}</span>`:''}</div>
-      <div class="t2">${esc(r[M])} · ${esc(r[J])}${r[GJR]?` · 경쟁률 ${r[GJR]}:1${r[MJ]?` (${r[MJ]}명 모집)`:''}`:''}</div>
+      <div class="t1">${esc(r[M])}</div>
+      <div class="t2">${esc(META.univs[r[U]])} <span class="tag ${esc(r[T])}">${esc(r[T])}</span> ${esc(r[J])}</div>
+      ${facts.length?`<div class="t3">${facts.join(' · ')}</div>`:''}
     </div>
-    <div class="cut">${r[C50]!==null?`<b>${cutfmt(r[C50])}</b><div class="small">발표 50%컷</div>`:`<div class="small" style="max-width:56px">작년 기록<br>없음</div>`}</div>
+    <div class="cut">${r[C50]!==null?`<b>${cutfmt(r[C50])}</b><div class="small">50%컷</div>`
+      :`<div class="small nodata">컷<br>미공개</div>`}</div>
     <button class="cartbtn ${inCart?'in':''}" data-cart="${i}" aria-label="${inCart?'목록에서 빼기':'내 목록에 담기'}">${inCart?'✅':'🛒'}</button>
   </div>`;
 }
@@ -139,37 +147,49 @@ function pItem(i){
 function updateResults(){
   const ids = filtered();
   const shown = ids.slice(0, state.limit);
-  $('#rescount').textContent = `${ids.length.toLocaleString()}개 전형 · 모집인원·경쟁률·컷은 모두 대학이 발표한 작년(2026) 값`;
+  $('#rescount').textContent = `${ids.length.toLocaleString()}개 전형 · 숫자는 대학 발표 2026 입시결과`;
   const box = $('#results');
-  box.innerHTML = (shown.map(pItem).join('') || '<div class="empty">조건에 맞는 전형이 없어요</div>')
+  box.innerHTML = (shown.map(pItem).join('') || `<div class="empty">조건에 맞는 전형이 없어요<br><span class="small">필터를 줄이거나 검색어를 짧게 해보세요</span>${activeFilterCount()?'<br><button class="btn ghost" style="margin-top:12px" onclick="document.getElementById(\'fClear\').click()">필터 초기화</button>':''}</div>`)
     + (ids.length>shown.length?`<button class="btn ghost loadmore" id="more">더 보기 (${(ids.length-shown.length).toLocaleString()}개 남음)</button>`:'');
   bindCommon(box);
   const more = $('#more'); if(more) more.addEventListener('click', ()=>{ state.limit+=100; updateResults(); });
 }
 
+function activeFilterCount(){
+  return state.types.size + (state.gyeol?1:0) + (state.region?1:0) + (state.free?1:0);
+}
 function renderSearch(){
   const regions = [...new Set(META.regions.filter(Boolean))].sort();
+  const nf = activeFilterCount();
   VIEW.innerHTML = `
   <div class="card no-print">
-    <input type="search" id="q" placeholder="대학·학과 검색  (예: 간호, 아주대, 심리)" value="${esc(state.q)}" autocomplete="off">
-    <div class="chips">
-      ${['교과','종합','논술','실기'].map(t=>`<button class="chip ${state.types.has(t)?'on':''}" data-type="${t}">${t}</button>`).join('')}
-      <span style="width:6px"></span>
-      ${['인문','자연','예체능'].map(g=>`<button class="chip ${state.gyeol===g?'on':''}" data-gyeol="${g}">${g}</button>`).join('')}
-      <button class="chip ${state.free?'on':''}" id="freeChip">🎓 자유전공만</button>
-    </div>
-    <div class="row">
-      <select id="region"><option value="">모든 지역</option>
-        ${regions.map(r=>`<option ${state.region===r?'selected':''}>${esc(r)}</option>`).join('')}</select>
-      <select id="sort">
-        <option value="pop" ${state.sort==='pop'?'selected':''}>지원 많은 순</option>
+    <input type="search" id="q" placeholder="학과·대학 검색  (예: 간호, 아주대, 심리)" value="${esc(state.q)}" autocomplete="off">
+    <div class="fbar">
+      <button class="btn ${nf?'':'line'}" id="fToggle">⚙️ 필터${nf?` ${nf}`:''}</button>
+      <select id="sort" style="flex:1">
+        <option value="data" ${state.sort==='data'?'selected':''}>자료 많은 순</option>
+        <option value="pop" ${state.sort==='pop'?'selected':''}>지원자 많은 순</option>
         <option value="comp" ${state.sort==='comp'?'selected':''}>경쟁률 낮은 순</option>
+        <option value="cutD" ${state.sort==='cutD'?'selected':''}>컷 낮은 순(들어가기 쉬운)</option>
+        <option value="cutA" ${state.sort==='cutA'?'selected':''}>컷 높은 순</option>
         <option value="name" ${state.sort==='name'?'selected':''}>대학명 순</option>
-        <option value="cutA" ${state.sort==='cutA'?'selected':''}>컷 높은 학과부터</option>
-        <option value="cutD" ${state.sort==='cutD'?'selected':''}>컷 낮은 학과부터</option>
       </select>
     </div>
-    <div class="mut" id="rescount" style="margin-top:6px"></div>
+    <div id="filters" class="${nf?'open':''}">
+      <div class="chips">
+        ${['교과','종합','논술','실기'].map(t=>`<button class="chip ${state.types.has(t)?'on':''}" data-type="${t}">${t}</button>`).join('')}
+      </div>
+      <div class="chips">
+        ${['인문','자연','예체능'].map(g=>`<button class="chip ${state.gyeol===g?'on':''}" data-gyeol="${g}">${g}</button>`).join('')}
+        <button class="chip ${state.free?'on':''}" id="freeChip">🎓 자유전공</button>
+      </div>
+      <div class="row">
+        <select id="region"><option value="">모든 지역</option>
+          ${regions.map(r=>`<option ${state.region===r?'selected':''}>${esc(r)}</option>`).join('')}</select>
+        <button class="btn line" id="fClear">필터 초기화</button>
+      </div>
+    </div>
+    <div class="mut" id="rescount" style="margin-top:8px"></div>
   </div>
   <div class="plist" id="results"></div>`;
   updateResults();
@@ -180,17 +200,26 @@ function renderSearch(){
     clearTimeout(tm);
     tm = setTimeout(()=>{ state.q = e.target.value; state.limit=60; updateResults(); }, 150);
   });
+  $('#fToggle').addEventListener('click', ()=> $('#filters').classList.toggle('open'));
+  $('#fClear').addEventListener('click', ()=>{
+    state.types=new Set(); state.gyeol=''; state.region=''; state.free=false; state.limit=60;
+    renderSearch(); $('#filters').classList.add('open'); });
   $('#freeChip').addEventListener('click', e => {
-    state.free = !state.free; e.target.classList.toggle('on', state.free); state.limit=60; updateResults(); });
-  $('#region').addEventListener('change', e => { state.region = e.target.value; state.limit=60; updateResults(); });
+    state.free = !state.free; e.target.classList.toggle('on', state.free);
+    state.limit=60; updateResults(); syncFilterBtn(); });
+  $('#region').addEventListener('change', e => { state.region = e.target.value; state.limit=60; updateResults(); syncFilterBtn(); });
   $('#sort').addEventListener('change', e => { state.sort = e.target.value; updateResults(); });
   document.querySelectorAll('[data-type]').forEach(b=>b.addEventListener('click',()=>{
     const t=b.dataset.type; state.types.has(t)?state.types.delete(t):state.types.add(t);
-    b.classList.toggle('on'); state.limit=60; updateResults(); }));
+    b.classList.toggle('on'); state.limit=60; updateResults(); syncFilterBtn(); }));
   document.querySelectorAll('[data-gyeol]').forEach(b=>b.addEventListener('click',()=>{
     state.gyeol = state.gyeol===b.dataset.gyeol ? '' : b.dataset.gyeol;
     document.querySelectorAll('[data-gyeol]').forEach(x=>x.classList.toggle('on', x.dataset.gyeol===state.gyeol));
-    state.limit=60; updateResults(); }));
+    state.limit=60; updateResults(); syncFilterBtn(); }));
+}
+function syncFilterBtn(){
+  const n=activeFilterCount(), b=$('#fToggle');
+  if(b){ b.textContent = `⚙️ 필터${n?` ${n}`:''}`; b.classList.toggle('line', !n); }
 }
 
 function bindCommon(root){
@@ -282,26 +311,34 @@ async function renderDetail(){
       발표 원자료가 그런 경우라 그대로 두었어요 — 컷 해석에 주의하세요.</div>`:''}
     ${(r[CW]&&r[MJ]&&r[CW]>=r[MJ])?`<div class="notice blue">🔄 작년 추가합격(${r[CW]}번)이 모집인원(${r[MJ]}명)의 ${(r[CW]/r[MJ]).toFixed(1)}배!
       최초 합격선보다 실제 문이 훨씬 넓었어요.</div>`:''}
-    ${r[NC]?(()=>{
-      const exp = (r[MJ]&&r[GJR]) ? Math.round(r[MJ]*r[GJR]) : null;
-      const pct = exp ? Math.round(r[NC]/exp*100) : null;
+    ${(()=>{
+      const exp=(r[MJ]&&r[GJR])?Math.round(r[MJ]*r[GJR]):null;
+      const pct=exp&&r[NC]?Math.round(r[NC]/exp*100):null;
+      const d=DS&&DS[String(i)];
+      const hasDist=r[GN]&&r[G50]!==null;
+      if(!r[NC]&&!hasDist&&!d) return '';
       return `
-    <h3 class="sec-sa">👥 이 전형 지원 기록 ${r[NC].toLocaleString()}건 <span class="src sa">선배 사례</span></h3>
-    <div class="mut small">📏 <b>${esc(r[J])}</b> 전형으로 <b>${esc(r[M])}</b>에 지원한 기록이에요.
-      ${exp?`이 전형 전체 지원자 약 ${exp.toLocaleString()}명 중 <b>${pct}%</b>를 확보한 표본이에요.`:''}</div>`;
-    })():''}
-    ${r[GN]?`
-    <div class="mut small" style="margin-top:8px">📏 범위: 이 학과를 <b>${esc(r[J])}</b> 전형으로 쓴 ${r[GN]}명 · 대학별 환산등급</div>
-    <div class="kv">
+    <h3 class="sec-sa">👥 선배들은 어땠나 <span class="src sa">선배 사례</span></h3>
+    <div class="mut small">${r[NC]?`이 전형 지원 기록 <b>${r[NC].toLocaleString()}건</b>${exp?` — 전체 지원자 약 ${exp.toLocaleString()}명 중 ${pct}% 표본`:''}`:'표본이 적어요'}</div>
+    ${hasDist?`
+    <div class="kv" style="margin-top:8px">
       <div class="cell"><div class="k">상위 30%</div><div class="v">${cutfmt(r[G30])}</div></div>
       <div class="cell"><div class="k">중간 50%</div><div class="v">${cutfmt(r[G50])}</div></div>
       <div class="cell"><div class="k">하위 70%</div><div class="v">${cutfmt(r[G70])}</div></div>
-    </div>`:''}
+    </div>
+    <div class="mut small">지원자 ${r[GN]}명의 대학별 환산등급 분포예요.</div>`:''}
+    ${d?`
+    <div class="scroll" style="margin-top:10px"><table>
+      <tr><th>전교과 기준</th><th class="num">상위30%</th><th class="num">50%</th><th class="num">70%</th></tr>
+      <tr><td>지원자 <span class="mut small">${d.n}명</span></td>${d.a.map(v=>`<td class="num">${cutfmt(v)}</td>`).join('')}</tr>
+      ${d.w?`<tr><td><b>합격자</b> <span class="mut small">${d.wn}명</span></td>${d.w.map(v=>`<td class="num"><b>${cutfmt(v)}</b></td>`).join('')}</tr>`:''}
+    </table></div>
+    ${d.w?`<div class="notice blue">💡 합격자 50% <b>${cutfmt(d.w[1])}</b> vs 지원자 전체 ${cutfmt(d.a[1])} —
+      차이가 작을수록 내신만으로 갈리지 않는 전형이에요.</div>`:''}`:''}`;
+    })()}
     ${sc?`
-    <h3 class="sec-sa">📐 여러 잣대로 다시 본 내신 <span class="src sa">선배 사례</span></h3>
-    <div class="mut small">📏 <b>${esc(r[J])}</b> 전형의 <b>입결 산출용 표본 ${sc.n||'?'}명</b>으로 계산한 값이에요.
-      위 지원사례와는 <u>별개로 모은 표본</u>이라 인원이 적을 수 있어요 —
-      여기서 볼 건 인원이 아니라 <b>잣대별 등급 차이</b>예요.</div>
+    <h3 class="sec-sa">📐 잣대를 바꾸면 등급이 달라져요 <span class="src sa">선배 사례</span></h3>
+    <div class="mut small">같은 학생도 어떤 과목을 반영하느냐에 따라 등급이 달라져요. 표본 ${sc.n||'?'}명 기준.</div>
     <div class="scroll"><table>
       <tr><th>기준</th><th class="num">상위30%</th><th class="num">50%</th><th class="num">70%</th></tr>
       <tr><td>대학 환산등급</td>${sc.univ.map(v=>`<td class="num">${cutfmt(v)}</td>`).join('')}</tr>
