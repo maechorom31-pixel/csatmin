@@ -114,7 +114,9 @@ function filtered(){
   const key = state.sort;
   out.sort((a,b) => {
     const A=P[a], B=P[b];
-    if(key==='pop')  return (B[NC]||0)-(A[NC]||0);
+    const app = x => (x[MJ]&&x[GJR]) ? x[MJ]*x[GJR] : -1;   // 대학 발표 기준 실제 지원자
+    if(key==='pop')  return app(B)-app(A);
+    if(key==='comp') return (A[GJR]??999)-(B[GJR]??999);
     if(key==='cutA') return (A[C50]??99)-(B[C50]??99);
     if(key==='cutD') return (B[C50]??-1)-(A[C50]??-1);
     return META.univs[A[U]].localeCompare(META.univs[B[U]],'ko') || A[M].localeCompare(B[M],'ko');
@@ -128,7 +130,7 @@ function pItem(i){
     <div class="body">
       <div class="t1">${esc(META.univs[r[U]])} <span class="tag ${esc(r[T])}">${esc(r[T])}</span>
         ${r[G]?`<span class="tag 계열">${esc(r[G])}</span>`:''}</div>
-      <div class="t2">${esc(r[M])} · ${esc(r[J])}${r[NC]?` · 선배 기록 ${r[NC].toLocaleString()}건`:''}</div>
+      <div class="t2">${esc(r[M])} · ${esc(r[J])}${r[GJR]?` · 경쟁률 ${r[GJR]}:1${r[MJ]?` (${r[MJ]}명 모집)`:''}`:''}</div>
     </div>
     <div class="cut">${r[C50]!==null?`<b>${cutfmt(r[C50])}</b><div class="small">발표 50%컷</div>`:`<div class="small" style="max-width:56px">작년 기록<br>없음</div>`}</div>
     <button class="cartbtn ${inCart?'in':''}" data-cart="${i}" aria-label="${inCart?'목록에서 빼기':'내 목록에 담기'}">${inCart?'✅':'🛒'}</button>
@@ -138,7 +140,7 @@ function pItem(i){
 function updateResults(){
   const ids = filtered();
   const shown = ids.slice(0, state.limit);
-  $('#rescount').textContent = `${ids.length.toLocaleString()}개 전형 · 컷=대학 발표(환산등급 50%) · 기록=선배 지원기록(여러 전형 합산)`;
+  $('#rescount').textContent = `${ids.length.toLocaleString()}개 전형 · 모집인원·경쟁률·컷은 모두 대학이 발표한 작년(2026) 값`;
   const box = $('#results');
   box.innerHTML = (shown.map(pItem).join('') || '<div class="empty">조건에 맞는 전형이 없어요</div>')
     + (ids.length>shown.length?`<button class="btn ghost loadmore" id="more">더 보기 (${(ids.length-shown.length).toLocaleString()}개 남음)</button>`:'');
@@ -161,7 +163,8 @@ function renderSearch(){
       <select id="region"><option value="">모든 지역</option>
         ${regions.map(r=>`<option ${state.region===r?'selected':''}>${esc(r)}</option>`).join('')}</select>
       <select id="sort">
-        <option value="pop" ${state.sort==='pop'?'selected':''}>사례 많은 순</option>
+        <option value="pop" ${state.sort==='pop'?'selected':''}>지원 많은 순</option>
+        <option value="comp" ${state.sort==='comp'?'selected':''}>경쟁률 낮은 순</option>
         <option value="name" ${state.sort==='name'?'selected':''}>대학명 순</option>
         <option value="cutA" ${state.sort==='cutA'?'selected':''}>컷 높은 학과부터</option>
         <option value="cutD" ${state.sort==='cutD'?'selected':''}>컷 낮은 학과부터</option>
@@ -285,9 +288,10 @@ async function renderDetail(){
       const exp = (r[MJ]&&r[GJR]) ? Math.round(r[MJ]*r[GJR]) : null;
       return `
     <h3 class="sec-sa">👥 선배들의 지원 기록 ${r[NC].toLocaleString()}건 <span class="src sa">선배 사례</span></h3>
-    <div class="mut small">📏 <b>${esc(r[M])}</b>에 <b>${esc(r[T])}</b>전형으로 지원한 기록을 모두 합친 수예요.
-      ${mix?`아래처럼 <u>여러 전형이 섞여 있어서</u>, 위 "${esc(r[J])}" 한 전형의 지원자 수${exp?`(약 ${exp.toLocaleString()}명)`:''}보다 클 수 있어요.`
-           :`대학이 발표한 실제 지원자 수와는 세는 범위가 달라요.`}</div>
+    <div class="mut small">📏 <b>${esc(r[M])}</b>에 <b>${esc(r[T])}</b>전형으로 지원한 기록 전부예요.
+      위 "${esc(r[J])}"${exp?` 한 전형(약 ${exp.toLocaleString()}명 지원)`:''}뿐 아니라
+      <u>지역인재·농어촌처럼 대학 발표 자료에 없는 전형까지 포함</u>돼 있어서 더 클 수 있어요.
+      ${mix?'내역은 아래에서 확인하세요.':''}</div>
     ${mix?`<details style="margin-top:8px"><summary>어떤 전형들이 섞여 있나 (${mix.length}종)</summary>
       <div class="scroll" style="margin-top:6px"><table>
         ${mix.map(([n,v])=>`<tr><td>${esc(n)}</td><td class="num">${v.toLocaleString()}건</td></tr>`).join('')}
