@@ -2,3 +2,6 @@
 *.html
 work.html
 index.html
+
+# 예외: docs/ 는 개인정보 없는 공개 탐색 사이트 (입시 통계만 포함)
+!docs/**/*.html
