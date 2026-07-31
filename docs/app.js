@@ -41,7 +41,9 @@ function toggleCart(i){
   const c = cart(); const k = c.indexOf(i);
   if(k >= 0){ c.splice(k,1); toast('목록에서 뺐어요'); }
   else { if(c.length >= 20){ toast('최대 20개까지 담을 수 있어요'); return; } c.push(i); toast('내 목록에 담았어요 🗂️'); }
-  setCart(c); render();
+  setCart(c);
+  // 탐색 탭에선 결과 목록만 갱신 (검색창 포커스 유지)
+  if(state.tab==='search' && $('#results')) updateResults(); else render();
 }
 
 /* ---------- 라우팅 ---------- */
@@ -126,13 +128,22 @@ function pItem(i){
   </div>`;
 }
 
-function renderSearch(){
+function updateResults(){
   const ids = filtered();
   const shown = ids.slice(0, state.limit);
+  $('#rescount').textContent = `${ids.length.toLocaleString()}개 전형 · 컷은 작년(2026) 대학별 환산등급 50% 지점`;
+  const box = $('#results');
+  box.innerHTML = (shown.map(pItem).join('') || '<div class="empty">조건에 맞는 전형이 없어요</div>')
+    + (ids.length>shown.length?`<button class="btn ghost loadmore" id="more">더 보기 (${(ids.length-shown.length).toLocaleString()}개 남음)</button>`:'');
+  bindCommon(box);
+  const more = $('#more'); if(more) more.addEventListener('click', ()=>{ state.limit+=100; updateResults(); });
+}
+
+function renderSearch(){
   const regions = [...new Set(META.regions.filter(Boolean))].sort();
   VIEW.innerHTML = `
   <div class="card no-print">
-    <input type="search" id="q" placeholder="대학·학과 검색  (예: 간호, 아주대, 심리)" value="${esc(state.q)}">
+    <input type="search" id="q" placeholder="대학·학과 검색  (예: 간호, 아주대, 심리)" value="${esc(state.q)}" autocomplete="off">
     <div class="chips">
       ${['교과','종합','논술','실기'].map(t=>`<button class="chip ${state.types.has(t)?'on':''}" data-type="${t}">${t}</button>`).join('')}
       <span style="width:6px"></span>
@@ -148,20 +159,26 @@ function renderSearch(){
         <option value="cutD" ${state.sort==='cutD'?'selected':''}>컷 낮은 학과부터</option>
       </select>
     </div>
-    <div class="mut" style="margin-top:6px">${ids.length.toLocaleString()}개 전형 · 컷은 작년(2026) 대학별 환산등급 50% 지점</div>
+    <div class="mut" id="rescount" style="margin-top:6px"></div>
   </div>
-  <div class="plist">${shown.map(pItem).join('') || '<div class="empty">조건에 맞는 전형이 없어요</div>'}</div>
-  ${ids.length>shown.length?`<button class="btn ghost loadmore" id="more">더 보기 (${(ids.length-shown.length).toLocaleString()}개 남음)</button>`:''}`;
+  <div class="plist" id="results"></div>`;
+  updateResults();
 
-  $('#q').addEventListener('input', e => { state.q = e.target.value; state.limit=60; renderSearch(); });
-  $('#region').addEventListener('change', e => { state.region = e.target.value; renderSearch(); });
-  $('#sort').addEventListener('change', e => { state.sort = e.target.value; renderSearch(); });
-  bindCommon();
-  const more = $('#more'); if(more) more.addEventListener('click', ()=>{ state.limit+=100; renderSearch(); });
+  // 입력창은 다시 그리지 않는다 — 결과만 갱신 (포커스·키보드 유지)
+  let tm = null;
+  $('#q').addEventListener('input', e => {
+    clearTimeout(tm);
+    tm = setTimeout(()=>{ state.q = e.target.value; state.limit=60; updateResults(); }, 150);
+  });
+  $('#region').addEventListener('change', e => { state.region = e.target.value; state.limit=60; updateResults(); });
+  $('#sort').addEventListener('change', e => { state.sort = e.target.value; updateResults(); });
   document.querySelectorAll('[data-type]').forEach(b=>b.addEventListener('click',()=>{
-    const t=b.dataset.type; state.types.has(t)?state.types.delete(t):state.types.add(t); renderSearch(); }));
+    const t=b.dataset.type; state.types.has(t)?state.types.delete(t):state.types.add(t);
+    b.classList.toggle('on'); state.limit=60; updateResults(); }));
   document.querySelectorAll('[data-gyeol]').forEach(b=>b.addEventListener('click',()=>{
-    state.gyeol = state.gyeol===b.dataset.gyeol ? '' : b.dataset.gyeol; renderSearch(); }));
+    state.gyeol = state.gyeol===b.dataset.gyeol ? '' : b.dataset.gyeol;
+    document.querySelectorAll('[data-gyeol]').forEach(x=>x.classList.toggle('on', x.dataset.gyeol===state.gyeol));
+    state.limit=60; updateResults(); }));
 }
 
 function bindCommon(root){
