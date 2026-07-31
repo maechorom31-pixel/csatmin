@@ -119,9 +119,9 @@ function pItem(i){
     <div class="body">
       <div class="t1">${esc(META.univs[r[U]])} <span class="tag ${esc(r[T])}">${esc(r[T])}</span>
         ${r[G]?`<span class="tag 계열">${esc(r[G])}</span>`:''}</div>
-      <div class="t2">${esc(r[M])} · ${esc(r[J])}${r[GN]?` · 작년 우리 지역 ${r[GN]}명 지원`:''}</div>
+      <div class="t2">${esc(r[M])} · ${esc(r[J])}${r[GN]?` · 작년 지원사례 ${r[GN]}명`:''}</div>
     </div>
-    <div class="cut"><b>${cutfmt(r[C50])}</b><div class="small">작년 50%컷</div></div>
+    <div class="cut">${r[C50]!==null?`<b>${cutfmt(r[C50])}</b><div class="small">작년 50%컷</div>`:`<div class="small" style="max-width:56px">작년 기록<br>없음</div>`}</div>
     <button class="cartbtn ${inCart?'in':''}" data-cart="${i}" aria-label="담기">${inCart?'✅':'➕'}</button>
   </div>`;
 }
@@ -235,8 +235,10 @@ async function renderDetail(){
       <div class="cell"><div class="k">작년 50%컷</div><div class="v">${cutfmt(r[C50])}<small> 환산</small></div></div>
       <div class="cell"><div class="k">작년 70%컷</div><div class="v">${cutfmt(r[C70])}<small> 환산</small></div></div>
     </div>
+    ${(r[CW]&&r[MJ]&&r[CW]>=r[MJ])?`<div class="notice blue">🔄 작년 추가합격(${r[CW]}번)이 모집인원(${r[MJ]}명)의 ${(r[CW]/r[MJ]).toFixed(1)}배!
+      최초 합격선보다 실제 문이 훨씬 넓었어요.</div>`:''}
     ${r[GN]?`
-    <h3>우리 지역(경기) 지원자 ${r[GN]}명의 성적 분포 <span class="mut small">대학별 환산등급</span></h3>
+    <h3>이 전형을 쓴 선배 ${r[GN]}명의 성적 분포 <span class="mut small">대학별 환산등급</span></h3>
     <div class="kv">
       <div class="cell"><div class="k">상위 30%</div><div class="v">${cutfmt(r[G30])}</div></div>
       <div class="cell"><div class="k">중간 50%</div><div class="v">${cutfmt(r[G50])}</div></div>
@@ -258,7 +260,7 @@ async function renderDetail(){
 
   <div class="card">
     <h2>이 전형을 쓴 선배들이 <u>같이</u> 쓴 곳</h2>
-    <div class="mut small">작년 우리 지역 지원자 기준 · 함께 낸 원서와 그 결과예요</div>
+    <div class="mut small">작년 이 전형에 지원한 <b>비슷한 성적대 선배들</b>이 함께 낸 원서와 그 결과예요</div>
     <div id="crossBox"><div class="empty small">불러오는 중…</div></div>
   </div>
   <div class="notice">⚠️ 과거 기록의 <b>관찰</b>이지 추천이 아니에요. 사례 수가 적으면(n이 작으면) 우연일 수 있어요.
@@ -268,18 +270,33 @@ async function renderDetail(){
   const gb = $('#goBand');
   if(gb) gb.addEventListener('click', ()=>{ state.band = Math.round(sc.jeon[1]*10)/10; location.hash='#tab=band'; });
 
-  // 교차지원 로드
+  // 교차지원 로드 (학과 단위 → 없으면 전형 단위 폴백)
   const shard = await loadCross(r[U]);
   const box = $('#crossBox');
   if(!box) return;
-  if(!shard){ box.innerHTML = '<div class="empty small">이 전형은 교차지원 기록이 없어요</div>'; return; }
-  // 계열 포함 키 우선, 없으면 계열 무시하고 수집
-  let rows = [];
-  const exact = `${r[T]}|${r[J]}|${r[G]}|${r[M]}`;
-  if(shard[exact]) rows = shard[exact].slice();
-  else{
-    const pre = `${r[T]}|${r[J]}|`, suf = `|${r[M]}`;
-    for(const k in shard) if(k.startsWith(pre) && k.endsWith(suf)) rows = rows.concat(shard[k]);
+  let rows = [], mode = 'dept';
+  if(shard){
+    const exact = `${r[T]}|${r[J]}|${r[G]}|${r[M]}`;
+    if(shard[exact]) rows = shard[exact].slice();
+    else{
+      const pre = `${r[T]}|${r[J]}|`, suf = `|${r[M]}`;
+      for(const k in shard) if(k.startsWith(pre) && k.endsWith(suf)) rows = rows.concat(shard[k]);
+    }
+  }
+  if(!rows.length){
+    // 전형 단위 폴백: [지역,대학,전형유형,전형,계열,지원,합격] → 공용 포맷으로 변환
+    try{
+      const r2 = await fetch(`data/cross2/${r[U]}.json`);
+      if(r2.ok){
+        const s2 = await r2.json();
+        let raw = s2[`${r[T]}|${r[J]}|${r[G]}`];
+        if(!raw){ const pre = `${r[T]}|${r[J]}|`; raw = Object.keys(s2).filter(k=>k.startsWith(pre)).flatMap(k=>s2[k]); }
+        if(raw && raw.length){
+          rows = raw.map(x=>[x[0],x[1],x[2],x[3],x[4],'',null,x[5],x[6]]);
+          mode = 'type';
+        }
+      }
+    }catch(e){}
   }
   if(!rows.length){ box.innerHTML = '<div class="empty small">이 전형은 교차지원 기록이 없어요</div>'; return; }
 
@@ -288,6 +305,7 @@ async function renderDetail(){
     const rs = rows.filter(x=>x[7]>=minN).sort((a,b)=>b[7]-a[7]);
     const total = rows.reduce((s,x)=>s+x[7],0);
     box.innerHTML = `
+      ${mode==='type'?`<div class="notice blue small">이 학과 단위 기록은 없어서, <b>같은 전형(${esc(r[J])})을 쓴 선배 전체</b> 기준으로 보여드려요.</div>`:''}
       <div class="chips no-print">
         ${[1,3,5,10].map(n=>`<button class="chip ${minN===n?'on':''}" data-minn="${n}">${n}건 이상</button>`).join('')}
         <span class="mut small" style="align-self:center">총 ${total.toLocaleString()}건의 원서</span>
@@ -295,9 +313,9 @@ async function renderDetail(){
       <div class="scroll"><table>
         <tr><th>어디를</th><th>어떤 전형으로</th><th class="num">지원</th><th class="num">합격률</th></tr>
         ${rs.slice(0,40).map(x=>{
-          const pi = findProgram(x[1], x[2], x[3], x[5]);
+          const pi = x[5] ? findProgram(x[1], x[2], x[3], x[5]) : -1;
           return `<tr ${pi>=0?`data-p="${pi}" style="cursor:pointer"`:''}>
-            <td><b>${esc(x[1])}</b><br><span class="mut small">${esc(x[5])}</span></td>
+            <td><b>${esc(x[1])}</b>${x[5]?`<br><span class="mut small">${esc(x[5])}</span>`:''}</td>
             <td>${esc(x[3])}<br><span class="mut small">${esc(x[2])}${x[4]?' · '+esc(x[4]):''}</span></td>
             <td class="num">${x[7]}</td>${rateHtml(x[7],x[8])}</tr>`;
         }).join('')}
@@ -314,11 +332,22 @@ async function renderDetail(){
 function renderBand(){
   const c = state.band, w = state.bandW || 0.25, lo = +(c-w).toFixed(2), hi = +(c+w).toFixed(2);
   // 전형(대학×전형) 단위: 전교과 50%가 밴드 안
-  if(!state._usedSc){ state._usedSc = new Set(); for(const r of P) if(r[SC]>=0) state._usedSc.add(r[SC]); }
+  if(!state._usedSc){
+    state._usedSc = new Set(); state._scG = {};
+    const cnt = {};
+    for(const r of P){
+      if(r[SC]<0) continue;
+      state._usedSc.add(r[SC]);
+      if(r[G]){ (cnt[r[SC]] = cnt[r[SC]] || {})[r[G]] = (cnt[r[SC]]?.[r[G]]||0)+1; }
+    }
+    for(const k in cnt) state._scG[k] = Object.entries(cnt[k]).sort((a,b)=>b[1]-a[1])[0][0];
+  }
   const hits = [];
   for(let si=0; si<S.length; si++){
     const s = S[si];
-    if(s.jeon[1]!==null && s.jeon[1]>=lo && s.jeon[1]<=hi && (s.n||0)>=5 && state._usedSc.has(si)) hits.push(si);
+    if(s.jeon[1]===null || s.jeon[1]<lo || s.jeon[1]>hi || (s.n||0)<5 || !state._usedSc.has(si)) continue;
+    if(state.bandG && state._scG[si] !== state.bandG) continue;
+    hits.push(si);
   }
   hits.sort((a,b)=>(S[b].n||0)-(S[a].n||0));
   const shown = hits.slice(0, state.bandLimit);
@@ -348,6 +377,10 @@ function renderBand(){
       ${[0.1,0.25,0.5].map(x=>`<button class="chip ${w===x?'on':''}" data-bw="${x}">±${x}</button>`).join('')}
       <span class="bandval mut small" style="align-self:center;min-width:0">→ ${lo.toFixed(2)}~${hi.toFixed(2)} 검색</span>
     </div>
+    <div class="chips">
+      ${['인문','자연','예체능'].map(g=>`<button class="chip ${state.bandG===g?'on':''}" data-bg="${g}">${g}</button>`).join('')}
+      <span class="mut small" style="align-self:center">전형의 주요 계열 기준</span>
+    </div>
     <div class="mut small">이 성적대 선배들이 실제 많이 낸 전형 순 · 지원자 5명 이상만</div>
   </div>
   <div class="plist">
@@ -356,8 +389,10 @@ function renderBand(){
       const univ = first!==undefined ? META.univs[P[first][U]] : '';
       const jname = first!==undefined ? P[first][J] : '';
       const tname = first!==undefined ? P[first][T] : '';
+      const gtag = state._scG[si];
       return `<details>
         <summary>${esc(univ)} <span class="tag ${esc(tname)}">${esc(tname)}</span> ${esc(jname)}
+          ${gtag?`<span class="tag 계열">${esc(gtag)}</span>`:''}
           <span class="mut small"> · ${s.n}명 지원 · 전교과 50% ${cutfmt(s.jeon[1])} (환산 ${cutfmt(s.univ[1])})</span></summary>
         <div class="plist" style="margin-top:8px">${ps.slice(0,8).map(pItem).join('')}
           ${ps.length>8?`<div class="mut small">외 ${ps.length-8}개 학과 — 탐색 탭에서 "${esc(univ)}" 검색</div>`:''}</div>
@@ -375,6 +410,7 @@ function renderBand(){
     VIEW.querySelector('.bandval').textContent = `→ ${(v-ww).toFixed(2)}~${(v+ww).toFixed(2)} 검색`; });
   $('#bandNum').addEventListener('change', e=>setBand(+e.target.value));
   document.querySelectorAll('[data-bw]').forEach(b=>b.addEventListener('click',()=>{ state.bandW=+b.dataset.bw; state.bandLimit=40; renderBand(); }));
+  document.querySelectorAll('[data-bg]').forEach(b=>b.addEventListener('click',()=>{ state.bandG = state.bandG===b.dataset.bg ? '' : b.dataset.bg; state.bandLimit=40; renderBand(); }));
   const bm=$('#bmore'); if(bm) bm.addEventListener('click',()=>{ state.bandLimit+=40; renderBand(); });
   bindCommon();
 }
