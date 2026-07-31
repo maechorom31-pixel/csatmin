@@ -280,7 +280,7 @@ async function renderDetail(){
     ${r[NC]?`
     <h3 class="sec-sa">👥 이 학과에 지원한 선배 ${r[NC].toLocaleString()}명 <span class="src sa">선배 사례</span></h3>
     <div class="mut small">${esc(META.univs[r[U]])} <b>${esc(r[M])}</b>에 ${esc(r[T])}전형으로 지원한 사례를 모두 합친 수예요
-      (전형명이 달라도 같은 학과면 함께 셉니다).</div>`:''}
+      (전형명이 달라도 같은 학과면 함께 셉니다). 아래 표들은 이 중 <u>일부 표본</u>이라 인원이 더 적어요.</div>`:''}
     ${r[GN]?`
     <div class="mut small" style="margin-top:8px">📏 범위: 이 학과를 <b>${esc(r[J])}</b> 전형으로 쓴 ${r[GN]}명 · 대학별 환산등급</div>
     <div class="kv">
@@ -289,9 +289,10 @@ async function renderDetail(){
       <div class="cell"><div class="k">하위 70%</div><div class="v">${cutfmt(r[G70])}</div></div>
     </div>`:''}
     ${sc?`
-    <h3 class="sec-sa">👥 여러 잣대로 다시 본 내신 <span class="src sa">선배 사례</span></h3>
-    <div class="mut small">📏 범위: <b>${esc(univ)} ${esc(r[J])}</b> 전형 지원자 <b>${sc.n||'?'}명</b>
-      (이 전형의 <u>모든 학과</u> 합계 — 위 ${r[NC]||'?'}명과 세는 범위가 달라요)</div>
+    <h3 class="sec-sa">📐 여러 잣대로 다시 본 내신 <span class="src sa">선배 사례</span></h3>
+    <div class="mut small">📏 <b>${esc(r[J])}</b> 전형의 <b>입결 산출용 표본 ${sc.n||'?'}명</b>으로 계산한 값이에요.
+      위 지원사례와는 <u>별개로 모은 표본</u>이라 인원이 적을 수 있어요 —
+      여기서 볼 건 인원이 아니라 <b>잣대별 등급 차이</b>예요.</div>
     <div class="scroll"><table>
       <tr><th>기준</th><th class="num">상위30%</th><th class="num">50%</th><th class="num">70%</th></tr>
       <tr><td>대학 환산등급</td>${sc.univ.map(v=>`<td class="num">${cutfmt(v)}</td>`).join('')}</tr>
