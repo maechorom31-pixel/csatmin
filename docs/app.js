@@ -100,7 +100,7 @@ function filtered(){
     const r = P[i];
     if(toks.length && !toks.every(t => r._s.includes(t))) continue;
     if(state.types.size && !state.types.has(r[T])) continue;
-    if(state.gyeol && r[G] !== state.gyeol) continue;
+    if(state.gyeol && r[G] !== state.gyeol && r[G] !== '공통') continue;  // 자유전공(공통)은 인문·자연 어디서든 보이게
     if(state.region && META.regions[r[U]] !== state.region) continue;
     out.push(i);
   }
@@ -353,35 +353,35 @@ async function renderDetail(){
 function renderBand(){
   const c = state.band, w = state.bandW || 0.25, lo = +(c-w).toFixed(2), hi = +(c+w).toFixed(2);
   // 전형(대학×전형) 단위: 전교과 50%가 밴드 안
-  if(!state._usedSc){
-    state._usedSc = new Set(); state._scG = {};
+  if(!state._scProgs){
+    // 전형(scale)별 프로그램 목록 + 대표 계열, 1회만 계산
+    state._scProgs = {}; state._scG = {};
     const cnt = {};
-    for(const r of P){
-      if(r[SC]<0) continue;
-      state._usedSc.add(r[SC]);
-      if(r[G]){ (cnt[r[SC]] = cnt[r[SC]] || {})[r[G]] = (cnt[r[SC]]?.[r[G]]||0)+1; }
+    for(let i=0;i<P.length;i++){
+      const k = P[i][SC];
+      if(k<0) continue;
+      (state._scProgs[k] = state._scProgs[k] || []).push(i);
+      const g = P[i][G];
+      if(g){ (cnt[k] = cnt[k] || {})[g] = (cnt[k][g]||0)+1; }
     }
+    for(const k in state._scProgs) state._scProgs[k].sort((a,b)=>(P[b][GN]||0)-(P[a][GN]||0));
     for(const k in cnt) state._scG[k] = Object.entries(cnt[k]).sort((a,b)=>b[1]-a[1])[0][0];
   }
   const hits = [];
   for(let si=0; si<S.length; si++){
     const s = S[si];
-    if(s.jeon[1]===null || s.jeon[1]<lo || s.jeon[1]>hi || (s.n||0)<5 || !state._usedSc.has(si)) continue;
-    if(state.bandG && state._scG[si] !== state.bandG) continue;
+    if(s.jeon[1]===null || s.jeon[1]<lo || s.jeon[1]>hi || (s.n||0)<5 || !state._scProgs[si]) continue;
+    // 계열 필터: 그 계열 학과가 하나라도 있는 전형만
+    if(state.bandG && !state._scProgs[si].some(i=>P[i][G]===state.bandG||P[i][G]==='공통')) continue;
     hits.push(si);
   }
   hits.sort((a,b)=>(S[b].n||0)-(S[a].n||0));
   const shown = hits.slice(0, state.bandLimit);
 
-  // scaleIdx -> 대표 프로그램들
+  // 펼침 목록: 계열 필터가 켜져 있으면 그 계열 학과만
   const progOf = {};
-  if(shown.length){
-    const want = new Set(shown);
-    for(let i=0;i<P.length;i++){
-      const k = P[i][SC];
-      if(want.has(k)){ (progOf[k] = progOf[k] || []).push(i); }
-    }
-    for(const k in progOf) progOf[k].sort((a,b)=>(P[b][GN]||0)-(P[a][GN]||0));
+  for(const si of shown){
+    progOf[si] = state.bandG ? state._scProgs[si].filter(i=>P[i][G]===state.bandG||P[i][G]==='공통') : state._scProgs[si];
   }
 
   VIEW.innerHTML = `
@@ -410,12 +410,14 @@ function renderBand(){
       const univ = first!==undefined ? META.univs[P[first][U]] : '';
       const jname = first!==undefined ? P[first][J] : '';
       const tname = first!==undefined ? P[first][T] : '';
-      const gtag = state._scG[si];
+      const gtag = state.bandG || state._scG[si];
       return `<details>
         <summary>${esc(univ)} <span class="tag ${esc(tname)}">${esc(tname)}</span> ${esc(jname)}
           ${gtag?`<span class="tag 계열">${esc(gtag)}</span>`:''}
           <span class="mut small"> · ${s.n}명 지원 · 전교과 50% ${cutfmt(s.jeon[1])} (환산 ${cutfmt(s.univ[1])})</span></summary>
-        <div class="plist" style="margin-top:8px">${ps.slice(0,8).map(pItem).join('')}
+        <div class="plist" style="margin-top:8px">
+          ${state.bandG?`<div class="mut small">${esc(state.bandG)} 학과만 표시 중</div>`:''}
+          ${ps.slice(0,8).map(pItem).join('')}
           ${ps.length>8?`<div class="mut small">외 ${ps.length-8}개 학과 — 탐색 탭에서 "${esc(univ)}" 검색</div>`:''}</div>
       </details>`;
     }).join('') || '<div class="empty">이 성적대 데이터가 부족해요 — 슬라이더를 옮겨보세요</div>'}
