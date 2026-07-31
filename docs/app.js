@@ -7,7 +7,8 @@ const VIEW = $('#view');
 const DATA_VER = 'v1';
 
 // programs.json 필드 인덱스
-const U=0, T=1, J=2, M=3, G=4, MJ=5, GJR=6, CW=7, C50=8, C70=9, GN=10, G30=11, G50=12, G70=13, SC=14, INV=15;
+const U=0, T=1, J=2, M=3, G=4, MJ=5, GJR=6, CW=7, C50=8, C70=9, GN=10, G30=11, G50=12, G70=13, SC=14, INV=15,
+      NC=16, NW=17;   // NC: 이 학과 통합 지원사례(두 자료 합산), NW: 그중 확인된 합격
 
 let META=null, P=null, S=null, DS=null;  // meta, programs, scales, 학과별 합불 통계
 let crossCache = {};                     // uidx -> shard
@@ -111,7 +112,7 @@ function filtered(){
   const key = state.sort;
   out.sort((a,b) => {
     const A=P[a], B=P[b];
-    if(key==='pop')  return (B[GN]||0)-(A[GN]||0);
+    if(key==='pop')  return (B[NC]||0)-(A[NC]||0);
     if(key==='cutA') return (A[C50]??99)-(B[C50]??99);
     if(key==='cutD') return (B[C50]??-1)-(A[C50]??-1);
     return META.univs[A[U]].localeCompare(META.univs[B[U]],'ko') || A[M].localeCompare(B[M],'ko');
@@ -125,7 +126,7 @@ function pItem(i){
     <div class="body">
       <div class="t1">${esc(META.univs[r[U]])} <span class="tag ${esc(r[T])}">${esc(r[T])}</span>
         ${r[G]?`<span class="tag 계열">${esc(r[G])}</span>`:''}</div>
-      <div class="t2">${esc(r[M])} · ${esc(r[J])}${r[GN]?` · 작년 지원사례 ${r[GN]}명`:''}</div>
+      <div class="t2">${esc(r[M])} · ${esc(r[J])}${r[NC]?` · 이 학과 지원사례 ${r[NC].toLocaleString()}명`:''}</div>
     </div>
     <div class="cut">${r[C50]!==null?`<b>${cutfmt(r[C50])}</b><div class="small">발표 50%컷</div>`:`<div class="small" style="max-width:56px">작년 기록<br>없음</div>`}</div>
     <button class="cartbtn ${inCart?'in':''}" data-cart="${i}" aria-label="${inCart?'목록에서 빼기':'내 목록에 담기'}">${inCart?'✅':'🛒'}</button>
@@ -135,7 +136,7 @@ function pItem(i){
 function updateResults(){
   const ids = filtered();
   const shown = ids.slice(0, state.limit);
-  $('#rescount').textContent = `${ids.length.toLocaleString()}개 전형 · 컷은 대학이 발표한 2026 입시결과(50%, 환산등급)`;
+  $('#rescount').textContent = `${ids.length.toLocaleString()}개 전형 · 컷=대학 발표(환산등급 50%) · 지원사례=선배 기록 통합`;
   const box = $('#results');
   box.innerHTML = (shown.map(pItem).join('') || '<div class="empty">조건에 맞는 전형이 없어요</div>')
     + (ids.length>shown.length?`<button class="btn ghost loadmore" id="more">더 보기 (${(ids.length-shown.length).toLocaleString()}개 남음)</button>`:'');
@@ -158,7 +159,7 @@ function renderSearch(){
       <select id="region"><option value="">모든 지역</option>
         ${regions.map(r=>`<option ${state.region===r?'selected':''}>${esc(r)}</option>`).join('')}</select>
       <select id="sort">
-        <option value="pop" ${state.sort==='pop'?'selected':''}>많이 지원한 순</option>
+        <option value="pop" ${state.sort==='pop'?'selected':''}>사례 많은 순</option>
         <option value="name" ${state.sort==='name'?'selected':''}>대학명 순</option>
         <option value="cutA" ${state.sort==='cutA'?'selected':''}>컷 높은 학과부터</option>
         <option value="cutD" ${state.sort==='cutD'?'selected':''}>컷 낮은 학과부터</option>
@@ -276,17 +277,21 @@ async function renderDetail(){
       발표 원자료가 그런 경우라 그대로 두었어요 — 컷 해석에 주의하세요.</div>`:''}
     ${(r[CW]&&r[MJ]&&r[CW]>=r[MJ])?`<div class="notice blue">🔄 작년 추가합격(${r[CW]}번)이 모집인원(${r[MJ]}명)의 ${(r[CW]/r[MJ]).toFixed(1)}배!
       최초 합격선보다 실제 문이 훨씬 넓었어요.</div>`:''}
+    ${r[NC]?`
+    <h3 class="sec-sa">👥 이 학과에 지원한 선배 ${r[NC].toLocaleString()}명 <span class="src sa">선배 사례</span></h3>
+    <div class="mut small">${esc(META.univs[r[U]])} <b>${esc(r[M])}</b>에 ${esc(r[T])}전형으로 지원한 사례를 모두 합친 수예요
+      (전형명이 달라도 같은 학과면 함께 셉니다).</div>`:''}
     ${r[GN]?`
-    <h3 class="sec-sa">👥 이 전형을 쓴 선배 ${r[GN]}명의 성적 분포 <span class="src sa">선배 사례</span></h3>
-    <div class="mut small">이 도구가 모은 지원자 표본이에요 — 위의 공식 컷과는 다른 출처! (합격·불합격 모두 포함, 대학별 환산등급)</div>
+    <div class="mut small" style="margin-top:8px">📏 범위: 이 학과를 <b>${esc(r[J])}</b> 전형으로 쓴 ${r[GN]}명 · 대학별 환산등급</div>
     <div class="kv">
       <div class="cell"><div class="k">상위 30%</div><div class="v">${cutfmt(r[G30])}</div></div>
       <div class="cell"><div class="k">중간 50%</div><div class="v">${cutfmt(r[G50])}</div></div>
       <div class="cell"><div class="k">하위 70%</div><div class="v">${cutfmt(r[G70])}</div></div>
     </div>`:''}
     ${sc?`
-    <h3 class="sec-sa">👥 이 전형 지원자들, 진짜 내신은? <span class="src sa">선배 사례 · ${sc.n||'?'}명</span></h3>
-    <div class="mut small">${esc(univ)} ${esc(r[J])}전형 지원 표본 전체를 여러 잣대로 다시 잰 값이에요.</div>
+    <h3 class="sec-sa">👥 여러 잣대로 다시 본 내신 <span class="src sa">선배 사례</span></h3>
+    <div class="mut small">📏 범위: <b>${esc(univ)} ${esc(r[J])}</b> 전형 지원자 <b>${sc.n||'?'}명</b>
+      (이 전형의 <u>모든 학과</u> 합계 — 위 ${r[NC]||'?'}명과 세는 범위가 달라요)</div>
     <div class="scroll"><table>
       <tr><th>기준</th><th class="num">상위30%</th><th class="num">50%</th><th class="num">70%</th></tr>
       <tr><td>대학 환산등급</td>${sc.univ.map(v=>`<td class="num">${cutfmt(v)}</td>`).join('')}</tr>
@@ -301,8 +306,8 @@ async function renderDetail(){
       const d = DS && DS[`${r[U]}|${r[T]}|${r[M]}`];
       if(!d) return '';
       return `
-      <h3 class="sec-sa">👥 이 학과, 붙은 선배 vs 쓴 선배 <span class="src sa">선배 사례 · ${d.n}명</span></h3>
-      <div class="mut small">이 학과에 실제로 원서를 낸 선배들의 <b>전교과 등급</b>이에요. 합격자만 따로 볼 수 있어요.</div>
+      <h3 class="sec-sa">👥 붙은 선배 vs 쓴 선배 <span class="src sa">선배 사례</span></h3>
+      <div class="mut small">📏 범위: 위 ${r[NC]||'?'}명 중 <b>전교과 등급까지 확인된 ${d.n}명</b>의 기록이에요.</div>
       <div class="scroll"><table>
         <tr><th>구분</th><th class="num">상위30%</th><th class="num">50%</th><th class="num">70%</th></tr>
         <tr><td>지원자 전체 <span class="mut small">(${d.n}명)</span></td>${d.a.map(v=>`<td class="num">${cutfmt(v)}</td>`).join('')}</tr>
@@ -363,9 +368,10 @@ async function renderDetail(){
     box.innerHTML = `
       ${mode==='type'?`<div class="notice blue small">이 학과 단위 기록은 없어서, <b>같은 전형(${esc(r[J])})을 쓴 선배 전체</b> 기준으로 보여드려요.</div>`:''}
       <div class="chips no-print">
-        ${[1,3,5,10].map(n=>`<button class="chip ${minN===n?'on':''}" data-minn="${n}">${n}건 이상</button>`).join('')}
-        <span class="mut small" style="align-self:center">총 ${total.toLocaleString()}건의 원서</span>
+        ${[1,3,5,10].map(n=>`<button class="chip ${minN===n?'on':''}" data-minn="${n}">${n}명 이상</button>`).join('')}
       </div>
+      <div class="mut small" style="margin-bottom:6px">${r[NC]?`이 학과 지원자 <b>${r[NC].toLocaleString()}명</b>이 `:''}다른 곳에 낸 원서 <b>${total.toLocaleString()}장</b>을 모은 표예요.
+        아래 <b>지원</b>은 "그곳에도 함께 낸 사람 수"입니다.</div>
       <div class="scroll"><table>
         <tr><th>어디를</th><th>어떻게</th><th class="num">지원</th><th class="num">합격률</th></tr>
         ${rs.slice(0,40).map(x=>{
@@ -399,7 +405,7 @@ function renderBand(){
       const g = P[i][G];
       if(g){ (cnt[k] = cnt[k] || {})[g] = (cnt[k][g]||0)+1; }
     }
-    for(const k in state._scProgs) state._scProgs[k].sort((a,b)=>(P[b][GN]||0)-(P[a][GN]||0));
+    for(const k in state._scProgs) state._scProgs[k].sort((a,b)=>(P[b][NC]||0)-(P[a][NC]||0));
     for(const k in cnt) state._scG[k] = Object.entries(cnt[k]).sort((a,b)=>b[1]-a[1])[0][0];
   }
   const hits = [];
