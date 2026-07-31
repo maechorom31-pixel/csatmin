@@ -1,5 +1,5 @@
 /* 대입 탐색 노트 — 성적 입력 없는 탐색/비교/공유 도구
- * 데이터: 2027 NAVI (경기 지원이력 스냅샷). 모든 수치는 과거 관찰값입니다. */
+ * 데이터: 대입 지원이력 통합 스냅샷(복수 출처). 모든 수치는 과거 관찰값입니다. */
 'use strict';
 
 const $ = s => document.querySelector(s);
@@ -9,7 +9,7 @@ const DATA_VER = 'v1';
 // programs.json 필드 인덱스
 const U=0, T=1, J=2, M=3, G=4, MJ=5, GJR=6, CW=7, C50=8, C70=9, GN=10, G30=11, G50=12, G70=13, SC=14;
 
-let META=null, P=null, S=null;          // meta, programs, scales
+let META=null, P=null, S=null, DS=null;  // meta, programs, scales, 학과별 합불 통계
 let crossCache = {};                     // uidx -> shard
 let state = { tab:'search', q:'', types:new Set(), gyeol:'', region:'', sort:'pop', limit:60,
               band:3.0, bandW:0.25, bandLimit:40, detail:null, minN:3 };
@@ -75,6 +75,7 @@ async function boot(){
       fetch('data/scales.json').then(r=>r.json()),
     ]);
     META=m; P=p; S=s;
+    fetch('data/deptstats.json').then(r=>r.json()).then(d=>{ DS=d; }).catch(()=>{});
     // 검색 인덱스
     P.forEach((r,i) => r._s = (META.univs[r[U]] + ' ' + r[M] + ' ' + r[J]).toLowerCase());
     setCart(cart());
@@ -198,13 +199,14 @@ function bindCommon(root){
 }
 
 /* ---------- 2) 상세 ---------- */
-async function loadCross(uidx){
-  if(crossCache[uidx] !== undefined) return crossCache[uidx];
+async function loadShard(dir, uidx){
+  const key = dir+':'+uidx;
+  if(crossCache[key] !== undefined) return crossCache[key];
   try{
-    const r = await fetch(`data/cross/${uidx}.json`);
-    crossCache[uidx] = r.ok ? await r.json() : null;
-  }catch(e){ crossCache[uidx] = null; }
-  return crossCache[uidx];
+    const r = await fetch(`data/${dir}/${uidx}.json`);
+    crossCache[key] = r.ok ? await r.json() : null;
+  }catch(e){ crossCache[key] = null; }
+  return crossCache[key];
 }
 
 let _uShort = null;
@@ -291,11 +293,26 @@ async function renderDetail(){
       환산컷만 보고 지레 포기하지 말고 전교과 기준으로 다시 봐요.</div>
     <button class="btn ghost no-print" id="goBand">📊 전교과 ${cutfmt(sc.jeon[1])} 근처 성적대는 어디를 많이 쓸까?</button>
     `:''}
+    ${(()=>{
+      const d = DS && DS[`${r[U]}|${r[T]}|${r[M]}`];
+      if(!d) return '';
+      return `
+      <h3 class="sec-sa">👥 이 학과, 붙은 선배 vs 쓴 선배 <span class="src sa">선배 사례 · ${d.n}명</span></h3>
+      <div class="mut small">이 학과에 실제로 원서를 낸 선배들의 <b>전교과 등급</b>이에요. 합격자만 따로 볼 수 있어요.</div>
+      <div class="scroll"><table>
+        <tr><th>구분</th><th class="num">상위30%</th><th class="num">50%</th><th class="num">70%</th></tr>
+        <tr><td>지원자 전체 <span class="mut small">(${d.n}명)</span></td>${d.a.map(v=>`<td class="num">${cutfmt(v)}</td>`).join('')}</tr>
+        ${d.w?`<tr><td><b>합격자만</b> <span class="mut small">(${d.wn}명)</span></td>${d.w.map(v=>`<td class="num"><b>${cutfmt(v)}</b></td>`).join('')}</tr>`:''}
+      </table></div>
+      ${d.w?`<div class="notice blue">💡 합격자 50%가 <b>${cutfmt(d.w[1])}</b>이고 지원자 전체는 ${cutfmt(d.a[1])}예요.
+        이 차이가 작을수록 "내신만으로 갈리지 않는" 전형이에요.</div>`
+        :`<div class="notice">합격 사례가 적어 합격자 기준은 표시하지 않았어요.</div>`}`;
+    })()}
   </div>
 
   <div class="card">
     <h2>이 전형을 쓴 선배들이 <u>같이</u> 쓴 곳 <span class="src sa">선배 사례</span></h2>
-    <div class="mut small">작년 이 전형에 지원한 <b>비슷한 성적대 선배들</b>이 함께 낸 원서와 그 결과예요</div>
+    <div class="mut small">이 학과에 지원한 <b>비슷한 성적대 선배들</b>이 함께 낸 원서와 그 결과예요</div>
     <div id="crossBox"><div class="empty small">불러오는 중…</div></div>
   </div>
   <div class="notice">⚠️ 과거 기록의 <b>관찰</b>이지 추천이 아니에요. 사례 수가 적으면(n이 작으면) 우연일 수 있어요.
@@ -305,33 +322,33 @@ async function renderDetail(){
   const gb = $('#goBand');
   if(gb) gb.addEventListener('click', ()=>{ state.band = Math.round(sc.jeon[1]*10)/10; location.hash='#tab=band'; });
 
-  // 교차지원 로드 (학과 단위 → 없으면 전형 단위 폴백)
-  const shard = await loadCross(r[U]);
+  // 교차지원: 학과 단위 통합본(cross3) 우선 → 전형 정확일치(cross) → 전형 단위(cross2)
   const box = $('#crossBox');
   if(!box) return;
   let rows = [], mode = 'dept';
-  if(shard){
-    const exact = `${r[T]}|${r[J]}|${r[G]}|${r[M]}`;
-    if(shard[exact]) rows = shard[exact].slice();
-    else{
-      const pre = `${r[T]}|${r[J]}|`, suf = `|${r[M]}`;
-      for(const k in shard) if(k.startsWith(pre) && k.endsWith(suf)) rows = rows.concat(shard[k]);
+  const s3 = await loadShard('cross3', r[U]);
+  if(s3 && s3[`${r[T]}|${r[M]}`]){
+    // [권역, 대학, 대전형, 모집단위, 계열, 지원, 합격]
+    rows = s3[`${r[T]}|${r[M]}`].map(x=>[x[0],x[1],x[2],'',x[4],x[3],null,x[5],x[6]]);
+  }
+  if(!rows.length){
+    const s1 = await loadShard('cross', r[U]);
+    if(s1){
+      const exact = `${r[T]}|${r[J]}|${r[G]}|${r[M]}`;
+      if(s1[exact]) rows = s1[exact].slice();
+      else{
+        const pre = `${r[T]}|${r[J]}|`, suf = `|${r[M]}`;
+        for(const k in s1) if(k.startsWith(pre) && k.endsWith(suf)) rows = rows.concat(s1[k]);
+      }
     }
   }
   if(!rows.length){
-    // 전형 단위 폴백: [지역,대학,전형유형,전형,계열,지원,합격] → 공용 포맷으로 변환
-    try{
-      const r2 = await fetch(`data/cross2/${r[U]}.json`);
-      if(r2.ok){
-        const s2 = await r2.json();
-        let raw = s2[`${r[T]}|${r[J]}|${r[G]}`];
-        if(!raw){ const pre = `${r[T]}|${r[J]}|`; raw = Object.keys(s2).filter(k=>k.startsWith(pre)).flatMap(k=>s2[k]); }
-        if(raw && raw.length){
-          rows = raw.map(x=>[x[0],x[1],x[2],x[3],x[4],'',null,x[5],x[6]]);
-          mode = 'type';
-        }
-      }
-    }catch(e){}
+    const s2 = await loadShard('cross2', r[U]);
+    if(s2){
+      let raw = s2[`${r[T]}|${r[J]}|${r[G]}`];
+      if(!raw){ const pre = `${r[T]}|${r[J]}|`; raw = Object.keys(s2).filter(k=>k.startsWith(pre)).flatMap(k=>s2[k]); }
+      if(raw && raw.length){ rows = raw.map(x=>[x[0],x[1],x[2],x[3],x[4],'',null,x[5],x[6]]); mode = 'type'; }
+    }
   }
   if(!rows.length){ box.innerHTML = '<div class="empty small">이 전형은 교차지원 기록이 없어요</div>'; return; }
 
@@ -346,12 +363,12 @@ async function renderDetail(){
         <span class="mut small" style="align-self:center">총 ${total.toLocaleString()}건의 원서</span>
       </div>
       <div class="scroll"><table>
-        <tr><th>어디를</th><th>어떤 전형으로</th><th class="num">지원</th><th class="num">합격률</th></tr>
+        <tr><th>어디를</th><th>어떻게</th><th class="num">지원</th><th class="num">합격률</th></tr>
         ${rs.slice(0,40).map(x=>{
           const pi = x[5] ? findProgram(x[1], x[2], x[3], x[5], x[0]) : -1;
           return `<tr ${pi>=0?`data-p="${pi}" style="cursor:pointer"`:''}>
             <td><b>${esc(x[1])}</b>${x[5]?`<br><span class="mut small">${esc(x[5])}</span>`:''}</td>
-            <td>${esc(x[3])}<br><span class="mut small">${esc(x[2])}${x[4]?' · '+esc(x[4]):''}</span></td>
+            <td>${esc(x[2])}${x[3]?`<br><span class="mut small">${esc(x[3])}</span>`:''}${x[4]?`<br><span class="mut small">${esc(x[4])}</span>`:''}</td>
             <td class="num">${x[7]}</td>${rateHtml(x[7],x[8])}</tr>`;
         }).join('')}
       </table></div>
