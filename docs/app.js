@@ -7,7 +7,7 @@ const VIEW = $('#view');
 const DATA_VER = 'v1';
 
 // programs.json 필드 인덱스
-const U=0, T=1, J=2, M=3, G=4, MJ=5, GJR=6, CW=7, C50=8, C70=9, GN=10, G30=11, G50=12, G70=13, SC=14;
+const U=0, T=1, J=2, M=3, G=4, MJ=5, GJR=6, CW=7, C50=8, C70=9, GN=10, G30=11, G50=12, G70=13, SC=14, INV=15;
 
 let META=null, P=null, S=null, DS=null;  // meta, programs, scales, 학과별 합불 통계
 let crossCache = {};                     // uidx -> shard
@@ -202,6 +202,8 @@ function bindCommon(root){
 async function loadShard(dir, uidx){
   const key = dir+':'+uidx;
   if(crossCache[key] !== undefined) return crossCache[key];
+  const have = META['has_'+dir];
+  if(have && !have.includes(uidx)){ crossCache[key] = null; return null; }  // 없는 샤드는 요청하지 않음
   try{
     const r = await fetch(`data/${dir}/${uidx}.json`);
     crossCache[key] = r.ok ? await r.json() : null;
@@ -270,6 +272,8 @@ async function renderDetail(){
       <div class="cell"><div class="k">50%컷</div><div class="v">${cutfmt(r[C50])}<small> 환산</small></div></div>
       <div class="cell"><div class="k">70%컷</div><div class="v">${cutfmt(r[C70])}<small> 환산</small></div></div>
     </div>
+    ${r[INV]?`<div class="notice">⚠️ 이 전형은 대학이 발표한 50%컷과 70%컷이 뒤집혀 있어요(70%가 더 좋은 등급).
+      발표 원자료가 그런 경우라 그대로 두었어요 — 컷 해석에 주의하세요.</div>`:''}
     ${(r[CW]&&r[MJ]&&r[CW]>=r[MJ])?`<div class="notice blue">🔄 작년 추가합격(${r[CW]}번)이 모집인원(${r[MJ]}명)의 ${(r[CW]/r[MJ]).toFixed(1)}배!
       최초 합격선보다 실제 문이 훨씬 넓었어요.</div>`:''}
     ${r[GN]?`
