@@ -64,6 +64,11 @@ button.btn:disabled{opacity:.45}
 .tag.논술{background:var(--warn-soft);color:var(--warn)}
 .tag.실기,.tag.기타{background:var(--line);color:var(--mut)}
 .tag.계열{background:none;border:1px solid var(--line);color:var(--mut);font-weight:500}
+.src{font-size:10.5px;border-radius:5px;padding:2px 7px;font-weight:700;vertical-align:2px;white-space:nowrap}
+.src.of{background:var(--ok-soft);color:var(--ok)}
+.src.sa{background:var(--warn-soft);color:var(--warn)}
+.sec-of{border-left:3px solid var(--ok);padding-left:10px;margin:14px 0 4px}
+.sec-sa{border-left:3px solid var(--warn);padding-left:10px;margin:14px 0 4px}
 table{width:100%;border-collapse:collapse;font-size:13px}
 th,td{padding:7px 6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
 th{font-size:11.5px;color:var(--mut);font-weight:600;white-space:nowrap}

@@ -123,7 +123,7 @@ function pItem(i){
         ${r[G]?`<span class="tag 계열">${esc(r[G])}</span>`:''}</div>
       <div class="t2">${esc(r[M])} · ${esc(r[J])}${r[GN]?` · 작년 지원사례 ${r[GN]}명`:''}</div>
     </div>
-    <div class="cut">${r[C50]!==null?`<b>${cutfmt(r[C50])}</b><div class="small">작년 50%컷</div>`:`<div class="small" style="max-width:56px">작년 기록<br>없음</div>`}</div>
+    <div class="cut">${r[C50]!==null?`<b>${cutfmt(r[C50])}</b><div class="small">발표 50%컷</div>`:`<div class="small" style="max-width:56px">작년 기록<br>없음</div>`}</div>
     <button class="cartbtn ${inCart?'in':''}" data-cart="${i}" aria-label="담기">${inCart?'✅':'➕'}</button>
   </div>`;
 }
@@ -131,7 +131,7 @@ function pItem(i){
 function updateResults(){
   const ids = filtered();
   const shown = ids.slice(0, state.limit);
-  $('#rescount').textContent = `${ids.length.toLocaleString()}개 전형 · 컷은 작년(2026) 대학별 환산등급 50% 지점`;
+  $('#rescount').textContent = `${ids.length.toLocaleString()}개 전형 · 컷은 대학이 발표한 2026 입시결과(50%, 환산등급)`;
   const box = $('#results');
   box.innerHTML = (shown.map(pItem).join('') || '<div class="empty">조건에 맞는 전형이 없어요</div>')
     + (ids.length>shown.length?`<button class="btn ghost loadmore" id="more">더 보기 (${(ids.length-shown.length).toLocaleString()}개 남음)</button>`:'');
@@ -245,24 +245,28 @@ async function renderDetail(){
       </div>
       <button class="cartbtn no-print ${inCart?'in':''}" data-cart="${i}" style="flex:none">${inCart?'✅':'➕'}</button>
     </div>
+    <h3 class="sec-of">🏫 대학이 발표한 작년(2026) 입시결과 <span class="src of">대학 발표</span></h3>
+    <div class="mut small">대학이 공개한 공식 기록이에요 — 최종 등록자 기준 컷.</div>
     <div class="kv">
       <div class="cell"><div class="k">모집인원</div><div class="v">${fmt(r[MJ],'명')}</div></div>
-      <div class="cell"><div class="k">작년 경쟁률</div><div class="v">${fmt(r[GJR])}<small> :1</small></div></div>
-      <div class="cell"><div class="k">작년 추가합격</div><div class="v">${fmt(r[CW],'번')}</div></div>
-      <div class="cell"><div class="k">작년 50%컷</div><div class="v">${cutfmt(r[C50])}<small> 환산</small></div></div>
-      <div class="cell"><div class="k">작년 70%컷</div><div class="v">${cutfmt(r[C70])}<small> 환산</small></div></div>
+      <div class="cell"><div class="k">경쟁률</div><div class="v">${fmt(r[GJR])}<small> :1</small></div></div>
+      <div class="cell"><div class="k">추가합격</div><div class="v">${fmt(r[CW],'번')}</div></div>
+      <div class="cell"><div class="k">50%컷</div><div class="v">${cutfmt(r[C50])}<small> 환산</small></div></div>
+      <div class="cell"><div class="k">70%컷</div><div class="v">${cutfmt(r[C70])}<small> 환산</small></div></div>
     </div>
     ${(r[CW]&&r[MJ]&&r[CW]>=r[MJ])?`<div class="notice blue">🔄 작년 추가합격(${r[CW]}번)이 모집인원(${r[MJ]}명)의 ${(r[CW]/r[MJ]).toFixed(1)}배!
       최초 합격선보다 실제 문이 훨씬 넓었어요.</div>`:''}
     ${r[GN]?`
-    <h3>이 전형을 쓴 선배 ${r[GN]}명의 성적 분포 <span class="mut small">대학별 환산등급</span></h3>
+    <h3 class="sec-sa">👥 이 전형을 쓴 선배 ${r[GN]}명의 성적 분포 <span class="src sa">선배 사례</span></h3>
+    <div class="mut small">이 도구가 모은 지원자 표본이에요 — 위의 공식 컷과는 다른 출처! (합격·불합격 모두 포함, 대학별 환산등급)</div>
     <div class="kv">
       <div class="cell"><div class="k">상위 30%</div><div class="v">${cutfmt(r[G30])}</div></div>
       <div class="cell"><div class="k">중간 50%</div><div class="v">${cutfmt(r[G50])}</div></div>
       <div class="cell"><div class="k">하위 70%</div><div class="v">${cutfmt(r[G70])}</div></div>
     </div>`:''}
     ${sc?`
-    <h3>이 전형 지원자들, 진짜 내신은? <span class="mut small">${esc(univ)} ${esc(r[J])} 전체 · ${sc.n||'?'}명 기준</span></h3>
+    <h3 class="sec-sa">👥 이 전형 지원자들, 진짜 내신은? <span class="src sa">선배 사례 · ${sc.n||'?'}명</span></h3>
+    <div class="mut small">${esc(univ)} ${esc(r[J])}전형 지원 표본 전체를 여러 잣대로 다시 잰 값이에요.</div>
     <div class="scroll"><table>
       <tr><th>기준</th><th class="num">상위30%</th><th class="num">50%</th><th class="num">70%</th></tr>
       <tr><td>대학 환산등급</td>${sc.univ.map(v=>`<td class="num">${cutfmt(v)}</td>`).join('')}</tr>
@@ -276,7 +280,7 @@ async function renderDetail(){
   </div>
 
   <div class="card">
-    <h2>이 전형을 쓴 선배들이 <u>같이</u> 쓴 곳</h2>
+    <h2>이 전형을 쓴 선배들이 <u>같이</u> 쓴 곳 <span class="src sa">선배 사례</span></h2>
     <div class="mut small">작년 이 전형에 지원한 <b>비슷한 성적대 선배들</b>이 함께 낸 원서와 그 결과예요</div>
     <div id="crossBox"><div class="empty small">불러오는 중…</div></div>
   </div>
@@ -382,7 +386,7 @@ function renderBand(){
 
   VIEW.innerHTML = `
   <div class="card">
-    <h2>내 성적대는 어디를 많이 쓸까?</h2>
+    <h2>내 성적대는 어디를 많이 쓸까? <span class="src sa">선배 사례</span></h2>
     <div class="mut small">전교과 9등급 기준. 내 등급을 알면 직접 입력, 대충이면 슬라이더로.</div>
     <div class="bandsel">
       <input type="number" id="bandNum" min="1" max="9" step="0.01" value="${c}" inputmode="decimal"
@@ -519,6 +523,14 @@ function renderHelp(){
     <p class="small">전교과 등급대를 슬라이더로 고르면, 그 성적대 선배들이 실제로 많이 낸 전형이 나와요.</p>
     <h3>🗂️ 내 목록</h3>
     <p class="small">➕로 담고, 순서를 정리하고, 링크로 공유하거나 인쇄해서 상담 때 가져오세요.</p>
+  </div>
+  <div class="card">
+    <h2>🏷️ 두 가지 숫자, 출처가 달라요</h2>
+    <p class="small" style="margin:8px 0"><span class="src of">대학 발표</span> — 대학이 공식 공개한 작년 입시결과예요.
+    모집인원·경쟁률·추가합격·50%/70%컷이 여기 해당해요. 최종 등록자 기준이라 가장 믿을 만하지만, 그 대학의 환산 방식으로 계산된 등급이에요.</p>
+    <p class="small" style="margin:8px 0"><span class="src sa">선배 사례</span> — 이 도구가 모은 작년 지원자 표본이에요.
+    성적 분포, 여러 잣대로 다시 잰 내신, "같이 쓴 곳", 성적대 탐색이 여기 해당해요. 합격·불합격이 모두 섞여 있고 표본 크기(n)에 따라 흔들릴 수 있어요.</p>
+    <p class="small" style="margin:8px 0">👉 그래서 <b>같은 화면에 두 숫자가 다르게 보이는 게 정상</b>이에요. "대학 발표 컷"은 붙은 사람들 기준, "선배 사례 분포"는 쓴 사람들 전체 기준이니까요.</p>
   </div>
   <div class="card">
     <h2>⚠️ 꼭 알아두기</h2>
