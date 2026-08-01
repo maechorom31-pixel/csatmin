@@ -118,3 +118,9 @@ tr.lk{cursor:pointer}
 tr.lk:active{background:var(--acc-soft)}
 tr.lk td:first-child b::after{content:" ›";color:var(--acc);font-weight:700}
 tr.nolk td{opacity:.72}
+
+/* 실질경쟁률 */
+.realr{color:var(--acc);font-weight:700}
+.realr.low{color:var(--ok)}
+.kv .cell.hl{background:var(--acc-soft)}
+.kv .cell.hl .k{color:var(--acc);font-weight:600}

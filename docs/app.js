@@ -5,11 +5,11 @@
 const $ = s => document.querySelector(s);
 const VIEW = $('#view');
 const DATA_VER = 'v1';
-const BUILD = '7';   // 배포 시 올리면 브라우저 캐시가 갱신됨
+const BUILD = '8';   // 배포 시 올리면 브라우저 캐시가 갱신됨
 
 // programs.json 필드 인덱스
 const U=0, T=1, J=2, M=3, G=4, MJ=5, GJR=6, CW=7, C50=8, C70=9, GN=10, G30=11, G50=12, G70=13, SC=14, INV=15,
-      NC=16, NW=17;   // NC: 이 학과 통합 지원사례(두 자료 합산), NW: 그중 확인된 합격
+      NC=16, NW=17, RC=18;   // NC: 통합 지원사례, NW: 확인된 합격, RC: 실질경쟁률
 
 let META=null, P=null, S=null, DS=null;  // meta, programs, scales, 전형별 합불통계
 let crossCache = {};                     // uidx -> shard
@@ -120,6 +120,7 @@ function filtered(){
     if(key==='data') return (rich(B)-rich(A)) || (app(B)-app(A));
     if(key==='pop')  return app(B)-app(A);
     if(key==='comp') return (A[GJR]??999)-(B[GJR]??999);
+    if(key==='real') return (A[RC]??999)-(B[RC]??999);
     if(key==='cutA') return (A[C50]??99)-(B[C50]??99);
     if(key==='cutD') return (B[C50]??-1)-(A[C50]??-1);
     return META.univs[A[U]].localeCompare(META.univs[B[U]],'ko') || A[M].localeCompare(B[M],'ko');
@@ -133,11 +134,13 @@ function pItem(i){
   if(r[MJ]) facts.push(`${r[MJ]}명 모집`);
   if(r[GJR]) facts.push(`${r[GJR]}:1`);
   if(r[CW]) facts.push(`추합 ${r[CW]}`);
+  const real = r[RC]!==null&&r[RC]!==undefined
+    ? `<span class="realr${r[RC]<2?' low':''}">실질 ${r[RC]}:1</span>` : '';
   return `<div class="pitem" data-p="${i}">
     <div class="body">
       <div class="t1">${esc(r[M])}</div>
       <div class="t2">${esc(META.univs[r[U]])} <span class="tag ${esc(r[T])}">${esc(r[T])}</span> ${esc(r[J])}</div>
-      ${facts.length?`<div class="t3">${facts.join(' · ')}</div>`:''}
+      ${(facts.length||real)?`<div class="t3">${facts.join(' · ')}${real?' · '+real:''}</div>`:''}
     </div>
     <div class="cut">${r[C50]!==null?`<b>${cutfmt(r[C50])}</b><div class="small">50%컷</div>`
       :`<div class="small nodata">컷<br>미공개</div>`}</div>
@@ -170,7 +173,8 @@ function renderSearch(){
       <select id="sort" style="flex:1">
         <option value="data" ${state.sort==='data'?'selected':''}>자료 많은 순</option>
         <option value="pop" ${state.sort==='pop'?'selected':''}>지원자 많은 순</option>
-        <option value="comp" ${state.sort==='comp'?'selected':''}>경쟁률 낮은 순</option>
+        <option value="real" ${state.sort==='real'?'selected':''}>실질경쟁률 낮은 순</option>
+        <option value="comp" ${state.sort==='comp'?'selected':''}>명목경쟁률 낮은 순</option>
         <option value="cutD" ${state.sort==='cutD'?'selected':''}>컷 낮은 순(들어가기 쉬운)</option>
         <option value="cutA" ${state.sort==='cutA'?'selected':''}>컷 높은 순</option>
         <option value="name" ${state.sort==='name'?'selected':''}>대학명 순</option>
@@ -306,9 +310,14 @@ async function renderDetail(){
       <div class="cell"><div class="k">경쟁률</div><div class="v">${fmt(r[GJR])}<small> :1</small></div></div>
       <div class="cell"><div class="k">추가합격</div><div class="v">${fmt(r[CW],'번')}</div></div>
       ${(r[MJ]&&r[GJR])?`<div class="cell"><div class="k">실제 지원자</div><div class="v">약 ${Math.round(r[MJ]*r[GJR]).toLocaleString()}<small>명</small></div></div>`:''}
+      ${r[RC]!==null&&r[RC]!==undefined?`<div class="cell hl"><div class="k">실질 경쟁률</div><div class="v">${r[RC]}<small> :1</small></div></div>`:''}
       <div class="cell"><div class="k">50%컷</div><div class="v">${cutfmt(r[C50])}<small> 환산</small></div></div>
       <div class="cell"><div class="k">70%컷</div><div class="v">${cutfmt(r[C70])}<small> 환산</small></div></div>
     </div>
+    ${(r[RC]!==null&&r[RC]!==undefined&&r[GJR])?`<div class="notice blue">🎯 <b>실질 경쟁률 ${r[RC]}:1</b>
+      — 추가합격 ${r[CW]||0}번까지 돌았으니 실제로는 <b>${(r[MJ]+(r[CW]||0)).toLocaleString()}명</b>이 붙은 셈이에요.
+      (지원 약 ${Math.round(r[MJ]*r[GJR]).toLocaleString()}명 ÷ ${(r[MJ]+(r[CW]||0)).toLocaleString()}자리)
+      겉보기 ${r[GJR]}:1보다 훨씬 낮죠.</div>`:''}
     ${r[INV]?`<div class="notice">⚠️ 이 전형은 대학이 발표한 50%컷과 70%컷이 뒤집혀 있어요(70%가 더 좋은 등급).
       발표 원자료가 그런 경우라 그대로 두었어요 — 컷 해석에 주의하세요.</div>`:''}
     ${(r[CW]&&r[MJ]&&r[CW]>=r[MJ])?`<div class="notice blue">🔄 작년 추가합격(${r[CW]}번)이 모집인원(${r[MJ]}명)의 ${(r[CW]/r[MJ]).toFixed(1)}배!
