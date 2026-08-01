@@ -112,3 +112,9 @@ summary{cursor:pointer;font-weight:600;font-size:13.5px}
   .card{box-shadow:none;border:1px solid #999;break-inside:avoid}
   #view{max-width:none}
 }
+
+/* 교차표: 연결 가능한 행만 클릭 가능하게 시각 구분 */
+tr.lk{cursor:pointer}
+tr.lk:active{background:var(--acc-soft)}
+tr.lk td:first-child b::after{content:" ›";color:var(--acc);font-weight:700}
+tr.nolk td{opacity:.72}

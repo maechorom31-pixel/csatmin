@@ -5,6 +5,7 @@
 const $ = s => document.querySelector(s);
 const VIEW = $('#view');
 const DATA_VER = 'v1';
+const BUILD = '7';   // 배포 시 올리면 브라우저 캐시가 갱신됨
 
 // programs.json 필드 인덱스
 const U=0, T=1, J=2, M=3, G=4, MJ=5, GJR=6, CW=7, C50=8, C70=9, GN=10, G30=11, G50=12, G70=13, SC=14, INV=15,
@@ -72,10 +73,10 @@ async function boot(){
   try{
     const nil = () => null;
     const [m, p, s, d] = await Promise.all([
-      fetch('data/meta.json').then(r=>r.json()),
-      fetch('data/programs.json').then(r=>r.json()),
-      fetch('data/scales.json').then(r=>r.json()),
-      fetch('data/deptstats.json').then(r=>r.json()).catch(nil),
+      fetch('data/meta.json?v='+BUILD).then(r=>r.json()),
+      fetch('data/programs.json?v='+BUILD).then(r=>r.json()),
+      fetch('data/scales.json?v='+BUILD).then(r=>r.json()),
+      fetch('data/deptstats.json?v='+BUILD).then(r=>r.json()).catch(nil),
     ]);
     META=m; P=p; S=s; DS=d;
     // 검색 인덱스
@@ -239,7 +240,7 @@ async function loadShard(dir, uidx){
   const have = META['has_'+dir];
   if(have && !have.includes(uidx)){ crossCache[key] = null; return null; }  // 없는 샤드는 요청하지 않음
   try{
-    const r = await fetch(`data/${dir}/${uidx}.json`);
+    const r = await fetch(`data/${dir}/${uidx}.json?v=${BUILD}`);
     crossCache[key] = r.ok ? await r.json() : null;
   }catch(e){ crossCache[key] = null; }
   return crossCache[key];
@@ -424,7 +425,7 @@ async function renderDetail(){
         <tr><th>어디를</th><th>어떻게</th><th class="num">지원</th><th class="num">합격률</th></tr>
         ${rs.slice(0,40).map(x=>{
           const pi = x[5] ? findProgram(x[1], x[2], x[3], x[5], x[0]) : -1;
-          return `<tr ${pi>=0?`data-p="${pi}" style="cursor:pointer"`:''}>
+          return `<tr ${pi>=0?`data-p="${pi}" class="lk"`:'class="nolk"'}>
             <td><b>${esc(x[1])}</b>${x[5]?`<br><span class="mut small">${esc(x[5])}</span>`:''}</td>
             <td>${esc(x[2])}${x[3]?`<br><span class="mut small">${esc(x[3])}</span>`:''}${x[4]?`<br><span class="mut small">${esc(x[4])}</span>`:''}</td>
             <td class="num">${x[7]}</td>${rateHtml(x[7],x[8])}</tr>`;
