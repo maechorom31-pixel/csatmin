@@ -274,8 +274,9 @@ function findProgram(univName, t, j, m, region){
   for(let i=0;i<P.length;i++){
     const r=P[i];
     if(!pool.includes(r[U]) || r[M]!==m) continue;
-    if(r[T]===t && r[J]===j) return i;               // 전형까지 정확히 일치
-    if(loose < 0) loose = i;                          // 학과만 맞는 후보 보관
+    if(r[T]!==t) continue;                            // 대전형(교과/종합/논술/실기)은 절대 넘지 않는다
+    if(r[J]===j) return i;                            // 전형명까지 정확히 일치
+    if(loose < 0) loose = i;                          // 같은 대전형·같은 학과 후보만 보관
   }
   return loose;
 }
